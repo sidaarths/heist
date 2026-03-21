@@ -1,0 +1,18 @@
+{
+  "name": "@heist/client",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@heist/shared": "workspace:*",
+    "preact": "^10.0.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.0.0",
+    "vite": "^5.0.0",
+    "typescript": "^5.0.0"
+  }
+}
