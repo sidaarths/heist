@@ -17,13 +17,6 @@ export interface GameRoom {
   createdAt: number
 }
 
-export type TileType =
-  | 'floor'
-  | 'wall'
-  | 'door'
-  | 'window'
-  | 'vault'
-
 export interface LootItem {
   id: string
   x: number
