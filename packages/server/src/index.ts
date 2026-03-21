@@ -77,9 +77,6 @@ const server = Bun.serve<SocketData>({
     close(ws: ServerWebSocket<SocketData>, code: number, reason: string) {
       socketHandler.close(ws, code, reason)
     },
-    error(ws: ServerWebSocket<SocketData>, error: Error) {
-      socketHandler.error(ws, error)
-    },
   },
 })
 
