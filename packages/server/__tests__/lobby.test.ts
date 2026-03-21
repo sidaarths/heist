@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
+import { randomUUID } from 'crypto'
 import { RoomManager } from '../src/lobby'
 import { MAX_PLAYERS, MAX_ROOMS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '@heist/shared'
 
@@ -11,26 +12,28 @@ describe('RoomManager', () => {
 
   describe('createRoom', () => {
     it('generates a 6-character alphanumeric room code', () => {
-      const result = manager.createRoom('Alice')
+      const result = manager.createRoom('Alice', randomUUID())
       if ('error' in result) throw new Error(result.error)
       expect(result.room.id).toMatch(/^[A-Z0-9]{6}$/)
       expect(result.room.id.length).toBe(ROOM_CODE_LENGTH)
     })
 
     it('assigns the creator as host', () => {
-      const result = manager.createRoom('Alice')
+      const playerId = randomUUID()
+      const result = manager.createRoom('Alice', playerId)
       if ('error' in result) throw new Error(result.error)
-      expect(result.room.hostId).toBe(result.player.id)
+      expect(result.room.hostId).toBe(playerId)
+      expect(result.player.id).toBe(playerId)
     })
 
     it('sets initial phase to lobby', () => {
-      const result = manager.createRoom('Alice')
+      const result = manager.createRoom('Alice', randomUUID())
       if ('error' in result) throw new Error(result.error)
       expect(result.room.phase).toBe('lobby')
     })
 
     it('adds the creator as first player with unassigned role', () => {
-      const result = manager.createRoom('Alice')
+      const result = manager.createRoom('Alice', randomUUID())
       if ('error' in result) throw new Error(result.error)
       expect(result.room.players).toHaveLength(1)
       expect(result.room.players[0].name).toBe('Alice')
@@ -42,9 +45,9 @@ describe('RoomManager', () => {
     it('rejects creation if max rooms reached', () => {
       // Fill up to MAX_ROOMS
       for (let i = 0; i < MAX_ROOMS; i++) {
-        manager.createRoom(`Player${i}`)
+        manager.createRoom(`Player${i}`, randomUUID())
       }
-      const result = manager.createRoom('OneMore')
+      const result = manager.createRoom('OneMore', randomUUID())
       expect('error' in result).toBe(true)
       if ('error' in result) {
         expect(result.error).toContain('max')
@@ -54,18 +57,18 @@ describe('RoomManager', () => {
 
   describe('joinRoom', () => {
     it('adds player to existing room', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const roomId = createResult.room.id
 
-      const joinResult = manager.joinRoom(roomId, 'Bob')
+      const joinResult = manager.joinRoom(roomId, 'Bob', randomUUID())
       if ('error' in joinResult) throw new Error(joinResult.error)
       expect(joinResult.room.players).toHaveLength(2)
       expect(joinResult.player.name).toBe('Bob')
     })
 
     it('returns error for unknown room code', () => {
-      const result = manager.joinRoom('XXXXXX', 'Bob')
+      const result = manager.joinRoom('XXXXXX', 'Bob', randomUUID())
       expect('error' in result).toBe(true)
       if ('error' in result) {
         expect(result.error).toContain('not found')
@@ -73,16 +76,16 @@ describe('RoomManager', () => {
     })
 
     it('rejects if room is full (5 players)', () => {
-      const createResult = manager.createRoom('Player1')
+      const createResult = manager.createRoom('Player1', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const roomId = createResult.room.id
 
       for (let i = 2; i <= MAX_PLAYERS; i++) {
-        const r = manager.joinRoom(roomId, `Player${i}`)
+        const r = manager.joinRoom(roomId, `Player${i}`, randomUUID())
         if ('error' in r) throw new Error(r.error)
       }
 
-      const result = manager.joinRoom(roomId, 'PlayerExtra')
+      const result = manager.joinRoom(roomId, 'PlayerExtra', randomUUID())
       expect('error' in result).toBe(true)
       if ('error' in result) {
         expect(result.error).toContain('full')
@@ -90,7 +93,7 @@ describe('RoomManager', () => {
     })
 
     it('rejects if game has already started (not in lobby phase)', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const roomId = createResult.room.id
 
@@ -98,7 +101,7 @@ describe('RoomManager', () => {
       const room = manager.getRoom(roomId)!
       room.phase = 'planning'
 
-      const result = manager.joinRoom(roomId, 'Bob')
+      const result = manager.joinRoom(roomId, 'Bob', randomUUID())
       expect('error' in result).toBe(true)
       if ('error' in result) {
         expect(result.error).toContain('started')
@@ -106,11 +109,11 @@ describe('RoomManager', () => {
     })
 
     it('room codes are case-insensitive', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const roomId = createResult.room.id.toLowerCase()
 
-      const joinResult = manager.joinRoom(roomId, 'Bob')
+      const joinResult = manager.joinRoom(roomId, 'Bob', randomUUID())
       expect('error' in joinResult).toBe(false)
       if (!('error' in joinResult)) {
         expect(joinResult.room.players).toHaveLength(2)
@@ -120,7 +123,8 @@ describe('RoomManager', () => {
 
   describe('selectRole', () => {
     it('allows one player to claim Security role', () => {
-      const createResult = manager.createRoom('Alice')
+      const playerId = randomUUID()
+      const createResult = manager.createRoom('Alice', playerId)
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player } = createResult
 
@@ -133,13 +137,13 @@ describe('RoomManager', () => {
     })
 
     it('rejects second player claiming Security', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 
       manager.selectRole(room.id, alice.id, 'security')
 
-      const joinResult = manager.joinRoom(room.id, 'Bob')
+      const joinResult = manager.joinRoom(room.id, 'Bob', randomUUID())
       if ('error' in joinResult) throw new Error(joinResult.error)
       const bob = joinResult.player
 
@@ -151,7 +155,7 @@ describe('RoomManager', () => {
     })
 
     it('allows role change before ready', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player } = createResult
 
@@ -165,7 +169,7 @@ describe('RoomManager', () => {
     })
 
     it('does not allow role change after ready', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player } = createResult
 
@@ -180,11 +184,11 @@ describe('RoomManager', () => {
     })
 
     it('assigns remaining players as thieves', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 
-      const joinResult = manager.joinRoom(room.id, 'Bob')
+      const joinResult = manager.joinRoom(room.id, 'Bob', randomUUID())
       if ('error' in joinResult) throw new Error(joinResult.error)
       const bob = joinResult.player
 
@@ -201,7 +205,7 @@ describe('RoomManager', () => {
 
   describe('setReady', () => {
     it('marks a player as ready', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player } = createResult
 
@@ -214,13 +218,13 @@ describe('RoomManager', () => {
     })
 
     it('does not start game if fewer than 3 players', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 
       manager.selectRole(room.id, alice.id, 'security')
 
-      const joinResult = manager.joinRoom(room.id, 'Bob')
+      const joinResult = manager.joinRoom(room.id, 'Bob', randomUUID())
       if ('error' in joinResult) throw new Error(joinResult.error)
       const bob = joinResult.player
       manager.selectRole(room.id, bob.id, 'thief')
@@ -235,13 +239,13 @@ describe('RoomManager', () => {
     })
 
     it('does not start game if no Security assigned', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 
-      const j1 = manager.joinRoom(room.id, 'Bob')
+      const j1 = manager.joinRoom(room.id, 'Bob', randomUUID())
       if ('error' in j1) throw new Error(j1.error)
-      const j2 = manager.joinRoom(room.id, 'Charlie')
+      const j2 = manager.joinRoom(room.id, 'Charlie', randomUUID())
       if ('error' in j2) throw new Error(j2.error)
 
       // No security role assigned — all unassigned
@@ -254,14 +258,38 @@ describe('RoomManager', () => {
       }
     })
 
-    it('transitions to planning phase when all players ready and valid', () => {
-      const createResult = manager.createRoom('Alice')
+    it('does not start game if any player has unassigned role', () => {
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 
-      const j1 = manager.joinRoom(room.id, 'Bob')
+      const j1 = manager.joinRoom(room.id, 'Bob', randomUUID())
       if ('error' in j1) throw new Error(j1.error)
-      const j2 = manager.joinRoom(room.id, 'Charlie')
+      const j2 = manager.joinRoom(room.id, 'Charlie', randomUUID())
+      if ('error' in j2) throw new Error(j2.error)
+
+      // Alice is security, Bob is thief, Charlie stays unassigned
+      manager.selectRole(room.id, alice.id, 'security')
+      manager.selectRole(room.id, j1.player.id, 'thief')
+      // j2 stays 'unassigned'
+
+      manager.setReady(room.id, alice.id, true)
+      manager.setReady(room.id, j1.player.id, true)
+      const result = manager.setReady(room.id, j2.player.id, true)
+      expect('error' in result).toBe(false)
+      if (!('error' in result)) {
+        expect(result.started).toBe(false)
+      }
+    })
+
+    it('transitions to planning phase when all players ready and valid', () => {
+      const createResult = manager.createRoom('Alice', randomUUID())
+      if ('error' in createResult) throw new Error(createResult.error)
+      const { room, player: alice } = createResult
+
+      const j1 = manager.joinRoom(room.id, 'Bob', randomUUID())
+      if ('error' in j1) throw new Error(j1.error)
+      const j2 = manager.joinRoom(room.id, 'Charlie', randomUUID())
       if ('error' in j2) throw new Error(j2.error)
 
       manager.selectRole(room.id, alice.id, 'security')
@@ -280,7 +308,7 @@ describe('RoomManager', () => {
     })
 
     it('unready resets if player changes role', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player } = createResult
 
@@ -300,11 +328,11 @@ describe('RoomManager', () => {
 
   describe('leaveRoom', () => {
     it('removes player from room', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 
-      const joinResult = manager.joinRoom(room.id, 'Bob')
+      const joinResult = manager.joinRoom(room.id, 'Bob', randomUUID())
       if ('error' in joinResult) throw new Error(joinResult.error)
       const bob = joinResult.player
 
@@ -315,11 +343,11 @@ describe('RoomManager', () => {
     })
 
     it('reassigns host if host leaves', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 
-      const joinResult = manager.joinRoom(room.id, 'Bob')
+      const joinResult = manager.joinRoom(room.id, 'Bob', randomUUID())
       if ('error' in joinResult) throw new Error(joinResult.error)
       const bob = joinResult.player
 
@@ -328,7 +356,7 @@ describe('RoomManager', () => {
     })
 
     it('cleans up empty rooms', () => {
-      const createResult = manager.createRoom('Alice')
+      const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
 

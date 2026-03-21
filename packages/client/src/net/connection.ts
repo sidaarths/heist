@@ -1,4 +1,5 @@
 import type { ClientMessage, ServerMessage } from '@heist/shared'
+import { wsConnected } from '../state/client-state'
 
 type MessageHandler = (msg: ServerMessage) => void
 
@@ -26,6 +27,7 @@ export class Connection {
     this.ws.onopen = () => {
       console.log('[WS] Connected')
       this.retryCount = 0
+      wsConnected.value = true
     }
 
     this.ws.onmessage = (event: MessageEvent) => {
@@ -41,6 +43,7 @@ export class Connection {
 
     this.ws.onclose = (event: CloseEvent) => {
       console.log(`[WS] Disconnected (${event.code})`)
+      wsConnected.value = false
       if (!this.intentionallyClosed) {
         this.scheduleReconnect()
       }

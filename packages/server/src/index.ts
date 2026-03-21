@@ -5,6 +5,9 @@ import type { SocketData } from './net/socket-handler'
 import type { ServerWebSocket } from 'bun'
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
+  .split(',')
+  .map(s => s.trim())
 
 const manager = new RoomManager()
 const socketHandler = new SocketHandler(manager)
@@ -14,16 +17,15 @@ const app = new Hono()
 // Health check endpoint
 app.get('/', (c) => c.json({ status: 'ok', service: 'heist-server' }))
 
-app.get('/health', (c) =>
-  c.json({
-    status: 'ok',
-    rooms: manager.rooms.size,
-    uptime: process.uptime(),
-  }),
-)
+app.get('/health', (c) => c.json({ status: 'ok', uptime: process.uptime() }))
 
 // Upgrade HTTP connections to WebSocket
 app.get('/ws', (c) => {
+  const origin = c.req.header('origin') ?? ''
+  if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
+    return c.text('Forbidden', 403)
+  }
+
   const server = (c.env as { server?: ReturnType<typeof Bun.serve> }).server
   const upgraded = server?.upgrade(c.req.raw, {
     data: {
@@ -46,6 +48,11 @@ const server = Bun.serve<SocketData>({
 
     // Handle WebSocket upgrade
     if (url.pathname === '/ws') {
+      const origin = req.headers.get('origin') ?? ''
+      if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
+        return new Response('Forbidden', { status: 403 })
+      }
+
       const upgraded = server.upgrade(req, {
         data: {
           playerId: crypto.randomUUID(),
@@ -75,6 +82,9 @@ const server = Bun.serve<SocketData>({
     },
   },
 })
+
+// Wire up the server reference so broadcast can use server.publish()
+socketHandler.server = server
 
 console.log(`[Heist Server] Listening on http://localhost:${PORT}`)
 console.log(`[Heist Server] WebSocket endpoint: ws://localhost:${PORT}/ws`)

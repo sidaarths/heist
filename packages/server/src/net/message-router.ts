@@ -3,6 +3,9 @@ import type { RoomManager } from '../lobby'
 
 type Responder = (msg: ServerMessage) => void
 
+const MAX_NAME_LEN = 24
+const MAX_ROOM_ID_LEN = 12
+
 export class MessageRouter {
   constructor(private manager: RoomManager) {}
 
@@ -41,27 +44,25 @@ export class MessageRouter {
     message: Extract<ClientMessage, { type: 'create_room' }>,
     respond: Responder,
   ): void {
-    if (!message.playerName || typeof message.playerName !== 'string') {
+    if (
+      !message.playerName ||
+      typeof message.playerName !== 'string' ||
+      message.playerName.trim().length === 0 ||
+      message.playerName.length > MAX_NAME_LEN
+    ) {
       respond({
         type: 'error',
         code: 'INVALID_MESSAGE',
-        message: 'create_room requires a "playerName" string field.',
+        message: 'Invalid player name.',
       })
       return
     }
 
-    const result = this.manager.createRoom(message.playerName)
+    const result = this.manager.createRoom(message.playerName, playerId)
     if ('error' in result) {
       respond({ type: 'error', code: 'CREATE_ROOM_FAILED', message: result.error })
       return
     }
-
-    // Track player -> room mapping via the manager
-    // Override the auto-generated player ID with the socket's player ID
-    // (In production, the socket handler would use the returned player.id)
-    this.manager.playerRoomMap.set(playerId, result.room.id)
-    // Also store the generated player id -> room mapping
-    this.manager.playerRoomMap.set(result.player.id, result.room.id)
 
     respond({
       type: 'room_created',
@@ -75,31 +76,38 @@ export class MessageRouter {
     message: Extract<ClientMessage, { type: 'join_room' }>,
     respond: Responder,
   ): void {
-    if (!message.roomId || typeof message.roomId !== 'string') {
+    if (
+      !message.roomId ||
+      typeof message.roomId !== 'string' ||
+      message.roomId.length > MAX_ROOM_ID_LEN
+    ) {
       respond({
         type: 'error',
         code: 'INVALID_MESSAGE',
-        message: 'join_room requires a "roomId" string field.',
+        message: 'Invalid room code.',
       })
       return
     }
 
-    if (!message.playerName || typeof message.playerName !== 'string') {
+    if (
+      !message.playerName ||
+      typeof message.playerName !== 'string' ||
+      message.playerName.trim().length === 0 ||
+      message.playerName.length > MAX_NAME_LEN
+    ) {
       respond({
         type: 'error',
         code: 'INVALID_MESSAGE',
-        message: 'join_room requires a "playerName" string field.',
+        message: 'Invalid player name.',
       })
       return
     }
 
-    const result = this.manager.joinRoom(message.roomId, message.playerName)
+    const result = this.manager.joinRoom(message.roomId, message.playerName, playerId)
     if ('error' in result) {
       respond({ type: 'error', code: 'JOIN_ROOM_FAILED', message: result.error })
       return
     }
-
-    this.manager.playerRoomMap.set(playerId, result.room.id)
 
     respond({
       type: 'room_joined',
@@ -133,29 +141,7 @@ export class MessageRouter {
       return
     }
 
-    // Find the actual player in the room by socket playerId or by checking playerRoomMap
-    // The router uses the socket playerId, but lobby creates its own IDs.
-    // We need to find the player whose room matches
-    const player = room.players.find(p => {
-      const mappedRoom = this.manager.playerRoomMap.get(p.id)
-      return mappedRoom === room.id && p.id === playerId
-    }) || room.players.find(p => {
-      // Fall back: check if playerId is in room's player list
-      return p.id === playerId
-    })
-
-    if (!player) {
-      // Try to find via the socket->room mapping indirectly
-      // The socket might have a different ID than the lobby's player ID
-      respond({
-        type: 'error',
-        code: 'NOT_IN_ROOM',
-        message: 'You are not currently in a room.',
-      })
-      return
-    }
-
-    const result = this.manager.selectRole(room.id, player.id, message.role as PlayerRole)
+    const result = this.manager.selectRole(room.id, playerId, message.role as PlayerRole)
     if ('error' in result) {
       respond({ type: 'error', code: 'SELECT_ROLE_FAILED', message: result.error })
       return
@@ -188,17 +174,7 @@ export class MessageRouter {
       return
     }
 
-    const player = room.players.find(p => p.id === playerId)
-    if (!player) {
-      respond({
-        type: 'error',
-        code: 'NOT_IN_ROOM',
-        message: 'You are not currently in a room.',
-      })
-      return
-    }
-
-    const result = this.manager.setReady(room.id, player.id, message.ready)
+    const result = this.manager.setReady(room.id, playerId, message.ready)
     if ('error' in result) {
       respond({ type: 'error', code: 'SET_READY_FAILED', message: result.error })
       return

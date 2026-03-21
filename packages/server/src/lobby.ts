@@ -34,17 +34,12 @@ export class RoomManager {
     return code
   }
 
-  private generatePlayerId(): string {
-    return randomBytes(16).toString('hex')
-  }
-
-  createRoom(playerName: string): RoomResult {
+  createRoom(playerName: string, playerId: string): RoomResult {
     if (this.rooms.size >= MAX_ROOMS) {
       return { error: 'Server has reached the max number of rooms. Please try again later.' }
     }
 
     const roomId = this.generateRoomCode()
-    const playerId = this.generatePlayerId()
 
     const player: PlayerInfo = {
       id: playerId,
@@ -68,7 +63,7 @@ export class RoomManager {
     return { room, player }
   }
 
-  joinRoom(roomId: string, playerName: string): RoomResult {
+  joinRoom(roomId: string, playerName: string, playerId: string): RoomResult {
     const normalizedId = roomId.toUpperCase()
     const room = this.rooms.get(normalizedId)
 
@@ -84,7 +79,6 @@ export class RoomManager {
       return { error: 'Room is full. Maximum 5 players allowed.' }
     }
 
-    const playerId = this.generatePlayerId()
     const player: PlayerInfo = {
       id: playerId,
       name: playerName,
@@ -146,8 +140,9 @@ export class RoomManager {
     const allReady = room.players.every(p => p.ready)
     const hasEnoughPlayers = room.players.length >= MIN_PLAYERS
     const hasSecurity = room.players.some(p => p.role === 'security')
+    const allAssigned = room.players.every(p => p.role !== 'unassigned')
 
-    if (allReady && hasEnoughPlayers && hasSecurity) {
+    if (allReady && hasEnoughPlayers && hasSecurity && allAssigned) {
       room.phase = 'planning'
       return { room, started: true }
     }

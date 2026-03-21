@@ -10,7 +10,7 @@ export const myPlayerName = signal<string>('')
 
 // Room state
 export const currentRoom = signal<GameRoom | null>(null)
-export const currentRoomId = signal<string | null>(null)
+export const currentRoomId = computed<string | null>(() => currentRoom.value?.id ?? null)
 
 // Derived state
 export const myPlayer = computed<PlayerInfo | null>(() => {
@@ -51,7 +51,6 @@ export const isLoading = signal<boolean>(false)
 // Actions
 export function setRoom(room: GameRoom | null): void {
   currentRoom.value = room
-  if (room) currentRoomId.value = room.id
 }
 
 export function clearError(): void {
