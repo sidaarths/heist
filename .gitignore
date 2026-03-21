@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.local
+
+# Bun (bun.lockb was the old binary format — bun.lock is tracked)
+
+# Build artifacts
+packages/*/dist/
+
+# Vite
+packages/client/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+.vercel

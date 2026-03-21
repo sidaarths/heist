@@ -1,0 +1,9 @@
+{
+  "buildCommand": "cd packages/client && bun run build",
+  "outputDirectory": "packages/client/dist",
+  "installCommand": "bun install",
+  "framework": null,
+  "env": {
+    "VITE_WS_URL": "@heist_ws_url"
+  }
+}
