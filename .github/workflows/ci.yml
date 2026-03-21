@@ -41,17 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun run build
-        working-directory: packages/client
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+      - name: Deploy to Vercel
+        run: vercel --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
         env:
-          VITE_WS_URL: ${{ secrets.VITE_WS_URL }}
-      - uses: vercel/action@v1
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
