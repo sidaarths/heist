@@ -1,5 +1,5 @@
 import { signal, computed } from '@preact/signals'
-import type { GameRoom, PlayerInfo, GamePhase } from '@heist/shared'
+import type { GameRoom, PlayerInfo } from '@heist/shared'
 
 // Connection state
 export const wsConnected = signal<boolean>(false)
@@ -17,7 +17,7 @@ export const myPlayer = computed<PlayerInfo | null>(() => {
   const room = currentRoom.value
   const id = myPlayerId.value
   if (!room || !id) return null
-  return room.players.find(p => p.id === id) ?? null
+  return room.players.find((p: PlayerInfo) => p.id === id) ?? null
 })
 
 export const isHost = computed<boolean>(() => {
@@ -29,15 +29,15 @@ export const isHost = computed<boolean>(() => {
 export const canStartGame = computed<boolean>(() => {
   const room = currentRoom.value
   if (!room) return false
-  const allReady = room.players.every(p => p.ready)
-  const hasSecurity = room.players.some(p => p.role === 'security')
+  const allReady = room.players.every((p: PlayerInfo) => p.ready)
+  const hasSecurity = room.players.some((p: PlayerInfo) => p.role === 'security')
   const hasEnoughPlayers = room.players.length >= 3
   return allReady && hasSecurity && hasEnoughPlayers
 })
 
 export const securityPlayer = computed<PlayerInfo | null>(() => {
   const room = currentRoom.value
-  return room?.players.find(p => p.role === 'security') ?? null
+  return room?.players.find((p: PlayerInfo) => p.role === 'security') ?? null
 })
 
 export const isSecurityTaken = computed<boolean>(() => {

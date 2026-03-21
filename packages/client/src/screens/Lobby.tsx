@@ -1,6 +1,6 @@
 import { h } from 'preact'
 import { useState, useEffect } from 'preact/hooks'
-import type { ServerMessage, PlayerRole } from '@heist/shared'
+import type { ServerMessage, PlayerRole, PlayerInfo } from '@heist/shared'
 import { connection } from '../net/connection'
 import {
   currentRoom,
@@ -144,7 +144,7 @@ export function Lobby() {
 
         case 'player_updated':
           if (currentRoom.value) {
-            const idx = currentRoom.value.players.findIndex(p => p.id === msg.player.id)
+            const idx = currentRoom.value.players.findIndex((p: PlayerInfo) => p.id === msg.player.id)
             if (idx >= 0) {
               const players = [...currentRoom.value.players]
               players[idx] = msg.player
@@ -157,7 +157,7 @@ export function Lobby() {
           if (currentRoom.value) {
             currentRoom.value = {
               ...currentRoom.value,
-              players: currentRoom.value.players.filter(p => p.id !== msg.playerId),
+              players: currentRoom.value.players.filter((p: PlayerInfo) => p.id !== msg.playerId),
             }
           }
           break
@@ -313,7 +313,7 @@ export function Lobby() {
           {/* Players List */}
           <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '4px' }}>PLAYERS</p>
           <ul style={styles.playerList}>
-            {room.players.map(player => (
+            {room.players.map((player: PlayerInfo) => (
               <li key={player.id} style={styles.playerItem}>
                 <span style={{ flex: 1 }}>
                   {player.name}
