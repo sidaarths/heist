@@ -5,8 +5,7 @@ dist/
 !.env.example
 *.local
 
-# Bun
-bun.lockb
+# Bun (bun.lockb was the old binary format — bun.lock is tracked)
 
 # Build artifacts
 packages/*/dist/
@@ -26,3 +25,4 @@ Thumbs.db
 
 # Coverage
 coverage/
+.vercel
