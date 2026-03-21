@@ -10,5 +10,8 @@
   "dependencies": {
     "@heist/shared": "workspace:*",
     "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
   }
 }
