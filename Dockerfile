@@ -11,7 +11,7 @@ COPY packages/shared ./packages/shared
 COPY packages/server ./packages/server
 
 RUN cd packages/shared && bun run build
-RUN cd packages/server && bun run build 2>/dev/null || true
+# Bun runs TypeScript directly — no separate build step needed for server
 
 EXPOSE 3001
 CMD ["bun", "run", "packages/server/src/index.ts"]
