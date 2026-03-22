@@ -1,6 +1,6 @@
 import type { GameState, ServerMessage } from '@heist/shared'
 import type { MapDef } from '@heist/shared'
-import { BASE_MOVE_SPEED } from '@heist/shared'
+import { BASE_MOVE_SPEED, REPLAY_BUFFER_MAX } from '@heist/shared'
 
 type BroadcastFn = (msg: ServerMessage) => void
 
@@ -22,7 +22,10 @@ export class GameEngine {
     this.advanceGuards()
     this.state.tick++
 
-    // Snapshot for replay (shallow copy of state is sufficient for now)
+    // Bounded replay buffer — keep only the last REPLAY_BUFFER_MAX snapshots
+    if (this.replayBuffer.length >= REPLAY_BUFFER_MAX) {
+      this.replayBuffer.shift()
+    }
     this.replayBuffer.push(structuredClone(this.state))
   }
 

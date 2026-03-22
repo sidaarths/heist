@@ -5,7 +5,7 @@ import {
   planningSecondsRemaining, chatMessages,
   currentGameState,
 } from '../state/client-state'
-import { BASIC_MAP } from '@heist/shared'
+import { BASIC_MAP, CHAT_MESSAGE_MAX_LEN } from '@heist/shared'
 
 // ─── Design tokens (match Lobby) ──────────────────────────────────────────────
 const R   = '#ff003c'
@@ -136,7 +136,7 @@ function ChatPanel() {
             type="text"
             placeholder="transmit..."
             value={input}
-            maxLength={200}
+            maxLength={CHAT_MESSAGE_MAX_LEN}
             onInput={(e) => setInput((e.target as HTMLInputElement).value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           />

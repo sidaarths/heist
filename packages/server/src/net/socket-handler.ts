@@ -104,12 +104,14 @@ export class SocketHandler {
     const roomId = this.manager.playerRoomMap.get(playerId)
     if (roomId) {
       const result = this.manager.leaveRoom(roomId, playerId)
-      this.manager.playerRoomMap.delete(playerId)
+      // playerRoomMap is already cleaned up inside leaveRoom()
       if (result.room) {
         this.broadcastRoomState(roomId)
         this.broadcast(roomId, { type: 'player_left', playerId })
+        // Stop any active game session — a disconnection during planning/heist ends the game
+        this.sessions.stopRoom(roomId)
       } else {
-        // Room was cleaned up — stop the game session if running
+        // Room was cleaned up (last player) — stop session if it somehow outlived the room
         this.sessions.stopRoom(roomId)
       }
     }

@@ -43,7 +43,7 @@ export class RoomManager {
 
     const player: PlayerInfo = {
       id: playerId,
-      name: playerName,
+      name: playerName.trim(),
       role: 'unassigned',
       ready: false,
       connected: true,
@@ -81,7 +81,7 @@ export class RoomManager {
 
     const player: PlayerInfo = {
       id: playerId,
-      name: playerName,
+      name: playerName.trim(),
       role: 'unassigned',
       ready: false,
       connected: true,

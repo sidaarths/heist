@@ -1,4 +1,5 @@
 import type { ClientMessage, ServerMessage, PlayerRole } from '@heist/shared'
+import { CHAT_MESSAGE_MAX_LEN } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 
 type Responder = (msg: ServerMessage) => void
@@ -36,6 +37,12 @@ export class MessageRouter {
         return this.handleStartGame(playerId, respond)
       case 'chat':
         return this.handleChat(playerId, message, respond)
+      // Phase 3 — handlers not yet implemented
+      case 'player_move':
+      case 'player_action':
+      case 'security_action':
+        respond({ type: 'error', code: 'NOT_IMPLEMENTED', message: 'This action is not available yet.' })
+        return
       default:
         respond({
           type: 'error',
@@ -210,14 +217,13 @@ export class MessageRouter {
     message: Extract<ClientMessage, { type: 'chat' }>,
     respond: Responder,
   ): void {
-    const MAX_MSG_LEN = 200
 
     if (!message.message || typeof message.message !== 'string') {
       respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'chat requires a "message" string.' })
       return
     }
 
-    const text = message.message.slice(0, MAX_MSG_LEN).trim()
+    const text = message.message.slice(0, CHAT_MESSAGE_MAX_LEN).trim()
     if (!text) return
 
     const room = this.manager.getRoomForPlayer(playerId)

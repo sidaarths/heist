@@ -4,7 +4,7 @@ import { connection } from '../net/connection'
 import {
   currentRoom, myPlayerId, myPlayerName, myPlayer,
   isSecurityTaken, errorMessage, isLoading,
-  setError, clearError,
+  setError, clearError, clearChatMessages,
 } from '../state/client-state'
 
 // ─── CSS animations injected once ────────────────────────────────────────────
@@ -173,6 +173,7 @@ export function Lobby() {
     myPlayerName.value = ''
     isLoading.value   = false
     clearError()
+    clearChatMessages()
     setJoinMode(false)
   }
 
@@ -254,6 +255,7 @@ export function Lobby() {
             tabIndex={0}
             onClick={handleCopyCode}
             onKeyDown={(e) => e.key === 'Enter' && handleCopyCode()}
+            aria-label={`Copy room code ${room.id}`}
             title="Click to copy"
             style={{
               textAlign: 'center', color: copied ? G : R,
