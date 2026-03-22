@@ -11,10 +11,15 @@ export const TILE = 32 // pixels per tile
 
 const COLOR_WALL    = '#0a0a14'
 const COLOR_FLOOR   = '#0f1520'
-const COLOR_DOOR_OPEN   = '#1a3a1a'
-const COLOR_DOOR_LOCKED = '#8b0000'
 const COLOR_GRID    = 'rgba(0,207,255,0.04)'
 const COLOR_ROOM_BORDER = 'rgba(0,207,255,0.15)'
+
+// Door colors
+const DOOR_FRAME        = '#6b4c11'
+const DOOR_LOCKED_FILL  = 'rgba(120,0,0,0.7)'
+const DOOR_LOCKED_GLOW  = '#cc2200'
+const DOOR_OPEN_FILL    = 'rgba(0,60,0,0.4)'
+const DOOR_OPEN_STROKE  = '#228822'
 
 /**
  * Build a quick floor-tile lookup from the map definition.
@@ -84,11 +89,66 @@ export class MapRenderer {
 
     // ── Doors ────────────────────────────────────────────────────────────────
     for (const door of doors) {
-      ctx.fillStyle = door.locked ? COLOR_DOOR_LOCKED : COLOR_DOOR_OPEN
-      ctx.fillRect(door.x * TILE + 4, door.y * TILE + 4, TILE - 8, TILE - 8)
-      ctx.strokeStyle = door.locked ? '#ff4444' : '#44ff44'
-      ctx.lineWidth = 1.5
-      ctx.strokeRect(door.x * TILE + 4, door.y * TILE + 4, TILE - 8, TILE - 8)
+      this.drawDoor(ctx, door)
     }
+  }
+
+  private drawDoor(ctx: CanvasRenderingContext2D, door: Door): void {
+    const x = door.x * TILE
+    const y = door.y * TILE
+    const cx = x + TILE / 2
+    const cy = y + TILE / 2
+
+    ctx.save()
+
+    // Door fill
+    ctx.fillStyle = door.locked ? DOOR_LOCKED_FILL : DOOR_OPEN_FILL
+    ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6)
+
+    // Door frame — thick brown border
+    ctx.strokeStyle = DOOR_FRAME
+    ctx.lineWidth = 3
+    ctx.strokeRect(x + 3, y + 3, TILE - 6, TILE - 6)
+
+    if (door.locked) {
+      // Locked: red glow border + padlock icon
+      ctx.strokeStyle = DOOR_LOCKED_GLOW
+      ctx.lineWidth = 1.5
+      ctx.shadowColor = DOOR_LOCKED_GLOW
+      ctx.shadowBlur = 6
+      ctx.strokeRect(x + 3, y + 3, TILE - 6, TILE - 6)
+      ctx.shadowBlur = 0
+
+      // Padlock shackle (arc on top)
+      ctx.strokeStyle = '#ff8888'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(cx, cy - 2, 4, Math.PI, 0)
+      ctx.stroke()
+      // Padlock body
+      ctx.fillStyle = '#cc2200'
+      ctx.fillRect(cx - 4, cy - 2, 8, 6)
+      // Keyhole
+      ctx.beginPath()
+      ctx.arc(cx, cy + 1, 1.5, 0, Math.PI * 2)
+      ctx.fillStyle = '#ff8888'
+      ctx.fill()
+    } else {
+      // Open: subtle green, door-swing arc
+      ctx.strokeStyle = DOOR_OPEN_STROKE
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.arc(x + 4, y + 4, TILE - 8, 0, Math.PI / 2)
+      ctx.stroke()
+
+      // "open" indicator — small green arrow
+      ctx.fillStyle = DOOR_OPEN_STROKE
+      ctx.font = '10px monospace'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('▸', cx, cy)
+    }
+
+    ctx.restore()
   }
 }
