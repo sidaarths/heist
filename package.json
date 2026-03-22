@@ -3,8 +3,11 @@
   "private": true,
   "workspaces": ["packages/*"],
   "scripts": {
-    "dev": "bun run --cwd packages/server src/index.ts & bun run --cwd packages/client dev",
+    "dev": "concurrently --names server,client --prefix-colors red,blue \"bun run --cwd packages/server src/index.ts\" \"bun run --cwd packages/client dev\"",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
