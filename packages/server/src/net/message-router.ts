@@ -1,6 +1,7 @@
 import type { ClientMessage, ServerMessage, PlayerRole } from '@heist/shared'
 import { CHAT_MESSAGE_MAX_LEN } from '@heist/shared'
 import type { RoomManager } from '../lobby'
+import type { GameSessionManager } from '../game/session-manager'
 
 type Responder = (msg: ServerMessage) => void
 type ThiefBroadcast = (roomId: string, msg: ServerMessage, excludeRoles?: string[]) => void
@@ -12,6 +13,7 @@ export class MessageRouter {
   constructor(
     private manager: RoomManager,
     private broadcastToThieves?: (roomId: string, msg: ServerMessage) => void,
+    private sessionManager?: GameSessionManager,
   ) {}
 
   route(playerId: string, message: ClientMessage, respond: Responder): void {
@@ -37,12 +39,12 @@ export class MessageRouter {
         return this.handleStartGame(playerId, respond)
       case 'chat':
         return this.handleChat(playerId, message, respond)
-      // Phase 3 — handlers not yet implemented
       case 'player_move':
+        return this.handlePlayerMove(playerId, message, respond)
       case 'player_action':
+        return this.handlePlayerAction(playerId, message, respond)
       case 'security_action':
-        respond({ type: 'error', code: 'NOT_IMPLEMENTED', message: 'This action is not available yet.' })
-        return
+        return this.handleSecurityAction(playerId, message, respond)
       default:
         respond({
           type: 'error',
@@ -264,5 +266,100 @@ export class MessageRouter {
     }
 
     this.broadcastToThieves?.(room.id, chatMsg)
+  }
+
+  private handlePlayerMove(
+    playerId: string,
+    message: Extract<ClientMessage, { type: 'player_move' }>,
+    respond: Responder,
+  ): void {
+    if (typeof message.dx !== 'number' || typeof message.dy !== 'number') {
+      respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'player_move requires numeric dx and dy.' })
+      return
+    }
+
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    if (room.phase !== 'heist') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Movement is only available during the heist phase.' })
+      return
+    }
+
+    const session = this.sessionManager?.getSession(room.id)
+    if (!session) return
+
+    session.engine.handlePlayerMove(playerId, message.dx, message.dy)
+  }
+
+  private handlePlayerAction(
+    playerId: string,
+    message: Extract<ClientMessage, { type: 'player_action' }>,
+    respond: Responder,
+  ): void {
+    const validActions = ['pick_lock', 'destroy_camera', 'disable_alarm', 'take_loot', 'drop_loot']
+    if (!validActions.includes(message.action) || typeof message.targetId !== 'string') {
+      respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'Invalid player_action.' })
+      return
+    }
+
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    if (room.phase !== 'heist') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Actions are only available during the heist phase.' })
+      return
+    }
+
+    const player = room.players.find(p => p.id === playerId)
+    if (!player || player.role !== 'thief') {
+      respond({ type: 'error', code: 'ACTION_DENIED', message: 'Only thieves can use player_action.' })
+      return
+    }
+
+    const session = this.sessionManager?.getSession(room.id)
+    if (!session) return
+
+    session.engine.handlePlayerAction(playerId, message.action, message.targetId)
+  }
+
+  private handleSecurityAction(
+    playerId: string,
+    message: Extract<ClientMessage, { type: 'security_action' }>,
+    respond: Responder,
+  ): void {
+    const validActions = ['lock_door', 'unlock_door', 'trigger_alarm', 'cut_lights', 'release_guard']
+    if (!validActions.includes(message.action)) {
+      respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'Invalid security_action.' })
+      return
+    }
+
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    if (room.phase !== 'heist') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Security actions are only available during the heist phase.' })
+      return
+    }
+
+    const player = room.players.find(p => p.id === playerId)
+    if (!player || player.role !== 'security') {
+      respond({ type: 'error', code: 'ACTION_DENIED', message: 'Only the security player can use security_action.' })
+      return
+    }
+
+    const session = this.sessionManager?.getSession(room.id)
+    if (!session) return
+
+    session.engine.handleSecurityAction(playerId, message.action, message.targetId, message.patrolPath)
   }
 }

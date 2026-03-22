@@ -109,24 +109,24 @@ describe('MessageRouter', () => {
     expect(errMsg.code).toBe('NOT_IN_ROOM')
   })
 
-  // ─── Phase 3 NOT_IMPLEMENTED stubs ──────────────────────────────────────────
+  // ─── Phase 3 action routing ──────────────────────────────────────────────────
 
-  it('returns NOT_IMPLEMENTED for player_move', () => {
+  it('returns NOT_IN_ROOM for player_move when player has no room', () => {
     const msgs = send('p1', { type: 'player_move', dx: 1, dy: 0 })
     expect(msgs[0].type).toBe('error')
-    expect((msgs[0] as any).code).toBe('NOT_IMPLEMENTED')
+    expect((msgs[0] as any).code).toBe('NOT_IN_ROOM')
   })
 
-  it('returns NOT_IMPLEMENTED for player_action', () => {
+  it('returns NOT_IN_ROOM for player_action when player has no room', () => {
     const msgs = send('p1', { type: 'player_action', action: 'pick_lock', targetId: 'door-1' })
     expect(msgs[0].type).toBe('error')
-    expect((msgs[0] as any).code).toBe('NOT_IMPLEMENTED')
+    expect((msgs[0] as any).code).toBe('NOT_IN_ROOM')
   })
 
-  it('returns NOT_IMPLEMENTED for security_action', () => {
+  it('returns NOT_IN_ROOM for security_action when player has no room', () => {
     const msgs = send('p1', { type: 'security_action', action: 'lock_door', targetId: 'door-1' })
     expect(msgs[0].type).toBe('error')
-    expect((msgs[0] as any).code).toBe('NOT_IMPLEMENTED')
+    expect((msgs[0] as any).code).toBe('NOT_IN_ROOM')
   })
 
   // ─── handleStartGame ─────────────────────────────────────────────────────────
