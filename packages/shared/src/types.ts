@@ -61,6 +61,20 @@ export interface Guard {
   alerted: boolean
 }
 
+export interface PlayerPosition {
+  playerId: string
+  x: number
+  y: number
+  frozen: boolean
+  frozenTicksRemaining: number
+  lootCarried: string[]
+}
+
+export interface ExitPoint {
+  x: number
+  y: number
+}
+
 export interface GameState {
   room: GameRoom
   loot: LootItem[]
@@ -68,8 +82,11 @@ export interface GameState {
   cameras: Camera[]
   alarmPanels: AlarmPanel[]
   guards: Guard[]
+  playerPositions: PlayerPosition[]
+  exit: ExitPoint
   tick: number
   alarmTriggered: boolean
+  lockdownTicksRemaining: number
   lightsOut: boolean
   lightsOutRemainingTicks: number
 }

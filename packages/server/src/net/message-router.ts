@@ -2,12 +2,16 @@ import type { ClientMessage, ServerMessage, PlayerRole } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 
 type Responder = (msg: ServerMessage) => void
+type ThiefBroadcast = (roomId: string, msg: ServerMessage, excludeRoles?: string[]) => void
 
 const MAX_NAME_LEN = 24
 const MAX_ROOM_ID_LEN = 12
 
 export class MessageRouter {
-  constructor(private manager: RoomManager) {}
+  constructor(
+    private manager: RoomManager,
+    private broadcastToThieves?: (roomId: string, msg: ServerMessage) => void,
+  ) {}
 
   route(playerId: string, message: ClientMessage, respond: Responder): void {
     if (!message || typeof message !== 'object' || !('type' in message)) {
@@ -188,12 +192,38 @@ export class MessageRouter {
     message: Extract<ClientMessage, { type: 'chat' }>,
     respond: Responder,
   ): void {
-    // Chat is handled by broadcasting to all room members in the socket handler
-    // For now, just acknowledge
-    respond({
-      type: 'error',
-      code: 'NOT_IMPLEMENTED',
-      message: 'Chat will be implemented in a future phase.',
-    })
+    const MAX_MSG_LEN = 200
+
+    if (!message.message || typeof message.message !== 'string') {
+      respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'chat requires a "message" string.' })
+      return
+    }
+
+    const text = message.message.slice(0, MAX_MSG_LEN).trim()
+    if (!text) return
+
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    const sender = room.players.find(p => p.id === playerId)
+    if (!sender) return
+
+    // Only thieves can chat; security cannot send or receive thief chat
+    if (sender.role !== 'thief') {
+      respond({ type: 'error', code: 'CHAT_DENIED', message: 'Security cannot use thief chat.' })
+      return
+    }
+
+    const chatMsg: ServerMessage = {
+      type: 'chat_message',
+      fromId: playerId,
+      fromName: sender.name,
+      message: text,
+    }
+
+    this.broadcastToThieves?.(room.id, chatMsg)
   }
 }
