@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks'
+import { useState, useEffect, useRef } from 'preact/hooks'
 import type { ServerMessage, PlayerRole, PlayerInfo } from '@heist/shared'
 import { connection } from '../net/connection'
 import {
@@ -96,6 +96,7 @@ export function Lobby() {
   const [view,       setView]       = useState<'home' | 'in-room'>('home')
   const [joinMode,   setJoinMode]   = useState(false)
   const [copied,     setCopied]     = useState(false)
+  const copyTimer                   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const room          = currentRoom.value
   const me            = myPlayer.value
@@ -188,8 +189,9 @@ export function Lobby() {
     if (!room) return
     navigator.clipboard.writeText(room.id).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    })
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => setCopied(false), 1800)
+    }).catch(() => setError('CLIPBOARD ACCESS DENIED.'))
   }
 
   function handleLeaveRoom() {
@@ -277,7 +279,10 @@ export function Lobby() {
 
           <div
             class="rcode"
+            role="button"
+            tabIndex={0}
             onClick={handleCopyCode}
+            onKeyDown={(e) => e.key === 'Enter' && handleCopyCode()}
             title="Click to copy"
             style={{
               textAlign: 'center', color: copied ? G : R,
