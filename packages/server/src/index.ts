@@ -55,7 +55,7 @@ const server = Bun.serve<SocketData>({
     // Handle WebSocket upgrade
     if (url.pathname === '/ws') {
       const origin = req.headers.get('origin') ?? ''
-      if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
+      if (origin && !isOriginAllowed(origin)) {
         return new Response('Forbidden', { status: 403 })
       }
 
