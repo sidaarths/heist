@@ -95,6 +95,7 @@ export function Lobby() {
   const [joinCode,   setJoinCode]   = useState('')
   const [view,       setView]       = useState<'home' | 'in-room'>('home')
   const [joinMode,   setJoinMode]   = useState(false)
+  const [copied,     setCopied]     = useState(false)
 
   const room          = currentRoom.value
   const me            = myPlayer.value
@@ -183,6 +184,14 @@ export function Lobby() {
     connection.send({ type: 'set_ready', ready: !(me?.ready ?? false) })
   }
 
+  function handleCopyCode() {
+    if (!room) return
+    navigator.clipboard.writeText(room.id).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    })
+  }
+
   function handleLeaveRoom() {
     connection.disconnect()
     connection.connect()
@@ -266,12 +275,22 @@ export function Lobby() {
             <span style={{ ...label, marginBottom: 0 }}>{room.players.length}/5 AGENTS</span>
           </div>
 
-          <div class="rcode" style={{
-            textAlign: 'center', color: R, padding: '14px 10px',
-            marginBottom: '24px', background: '#100008',
-            fontSize: '2rem', letterSpacing: '0.35em',
-          }}>
+          <div
+            class="rcode"
+            onClick={handleCopyCode}
+            title="Click to copy"
+            style={{
+              textAlign: 'center', color: copied ? G : R,
+              padding: '14px 10px', marginBottom: '24px',
+              background: '#100008', cursor: 'pointer',
+              fontSize: '2rem', letterSpacing: '0.35em',
+              transition: 'color .2s',
+            }}
+          >
             {room.id}
+            <div style={{ fontSize: '13px', letterSpacing: '2px', marginTop: '6px', fontFamily: "'VT323', monospace", opacity: 0.7 }}>
+              {copied ? '✓ COPIED' : 'CLICK TO COPY'}
+            </div>
           </div>
 
           {errorBanner}
