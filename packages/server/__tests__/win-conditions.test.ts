@@ -182,9 +182,9 @@ describe('win-conditions — security wins (lockdown)', () => {
   })
 })
 
-describe('win-conditions — security wins (trap)', () => {
-  it('security wins when all thieves are trapped in locked rooms', () => {
-    // Two doors fully enclosing both thieves at same tile, both locked
+describe('win-conditions — no trap condition', () => {
+  it('security does NOT win just because thieves are near locked doors', () => {
+    // Thieves surrounded by locked doors can still pick locks — not a loss
     const door1: Door = { id: 'door1', x: 6, y: 5, locked: true, open: false }
     const door2: Door = { id: 'door2', x: 4, y: 5, locked: true, open: false }
 
@@ -192,26 +192,6 @@ describe('win-conditions — security wins (trap)', () => {
       doors: [door1, door2],
       playerPositions: [
         { playerId: 'thief1', x: 5, y: 5, frozen: false, frozenTicksRemaining: 0, lootCarried: [] },
-        { playerId: 'thief2', x: 5, y: 5, frozen: false, frozenTicksRemaining: 0, lootCarried: [] },
-        { playerId: 'sec1', x: 30, y: 30, frozen: false, frozenTicksRemaining: 0, lootCarried: [] },
-      ],
-    })
-
-    const result = checkWinConditions(state)
-    expect(result).not.toBeNull()
-    expect(result!.winner).toBe('security')
-    expect(result!.reason).toMatch(/trap/i)
-  })
-
-  it('security does NOT win trap condition when at least one thief is free', () => {
-    const door1: Door = { id: 'door1', x: 6, y: 5, locked: true, open: false }
-
-    const state = makeState({
-      doors: [door1],
-      playerPositions: [
-        // thief1 is near door (trapped), thief2 is far (free)
-        { playerId: 'thief1', x: 5, y: 5, frozen: false, frozenTicksRemaining: 0, lootCarried: [] },
-        { playerId: 'thief2', x: 25, y: 25, frozen: false, frozenTicksRemaining: 0, lootCarried: [] },
         { playerId: 'sec1', x: 30, y: 30, frozen: false, frozenTicksRemaining: 0, lootCarried: [] },
       ],
     })
