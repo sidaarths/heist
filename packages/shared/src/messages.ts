@@ -7,6 +7,7 @@ export type ClientMessage =
   | { type: 'select_role'; role: PlayerRole }
   | { type: 'set_ready'; ready: boolean }
   | { type: 'chat'; message: string }
+  | { type: 'start_game' }
   | { type: 'player_move'; dx: number; dy: number }
   | { type: 'player_action'; action: 'pick_lock' | 'destroy_camera' | 'disable_alarm' | 'take_loot' | 'drop_loot'; targetId: string }
   | { type: 'security_action'; action: 'lock_door' | 'unlock_door' | 'trigger_alarm' | 'cut_lights' | 'release_guard'; targetId?: string; patrolPath?: Array<{ x: number; y: number }> }

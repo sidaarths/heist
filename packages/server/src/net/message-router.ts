@@ -32,6 +32,8 @@ export class MessageRouter {
         return this.handleSelectRole(playerId, message, respond)
       case 'set_ready':
         return this.handleSetReady(playerId, message, respond)
+      case 'start_game':
+        return this.handleStartGame(playerId, respond)
       case 'chat':
         return this.handleChat(playerId, message, respond)
       default:
@@ -181,6 +183,22 @@ export class MessageRouter {
     const result = this.manager.setReady(room.id, playerId, message.ready)
     if ('error' in result) {
       respond({ type: 'error', code: 'SET_READY_FAILED', message: result.error })
+      return
+    }
+
+    respond({ type: 'room_state', room: result.room })
+  }
+
+  private handleStartGame(playerId: string, respond: Responder): void {
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    const result = this.manager.startGame(room.id, playerId)
+    if ('error' in result) {
+      respond({ type: 'error', code: 'START_GAME_FAILED', message: result.error })
       return
     }
 

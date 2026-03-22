@@ -55,3 +55,11 @@ export async function selectRoleAndReady(
   // Confirm ready state — button changes to CANCEL READY
   await expect(page.getByTestId('ready-btn')).toContainText('CANCEL READY', { timeout: 5_000 })
 }
+
+/**
+ * Click the host's LAUNCH HEIST button (only available to host when all conditions met).
+ */
+export async function launchHeist(hostPage: Page): Promise<void> {
+  await expect(hostPage.getByTestId('start-game-btn')).toBeEnabled({ timeout: 10_000 })
+  await hostPage.getByTestId('start-game-btn').click()
+}

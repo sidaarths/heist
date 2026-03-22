@@ -104,7 +104,23 @@ export function Lobby() {
   const secTaken = isSecurityTaken.value
 
   // Derive view from signals — no local state needed
-  const inRoom = myPlayerId.value !== null
+  const inRoom  = myPlayerId.value !== null
+  const isHost  = room?.hostId === myPlayerId.value
+
+  // Start game readiness checks (evaluated client-side for UI feedback)
+  const allReady        = room ? room.players.every(p => p.ready) : false
+  const hasSecurity     = room ? room.players.some(p => p.role === 'security') : false
+  const allAssigned     = room ? room.players.every(p => p.role !== 'unassigned') : false
+  const enoughPlayers   = room ? room.players.length >= 2 : false
+  const canStart        = allReady && hasSecurity && allAssigned && enoughPlayers
+
+  function startBlockReason(): string {
+    if (!enoughPlayers) return `NEED ${2 - (room?.players.length ?? 0)} MORE PLAYER(S)`
+    if (!hasSecurity)   return 'NO SECURITY ASSIGNED'
+    if (!allAssigned)   return 'ALL PLAYERS MUST SELECT A ROLE'
+    if (!allReady)      return 'WAITING FOR ALL TO READY UP'
+    return ''
+  }
 
   useEffect(() => {
     injectCSS()
@@ -142,6 +158,11 @@ export function Lobby() {
       if (copyTimer.current) clearTimeout(copyTimer.current)
       copyTimer.current = setTimeout(() => setCopied(false), 1800)
     }).catch(() => setError('CLIPBOARD ACCESS DENIED.'))
+  }
+
+  function handleStartGame() {
+    clearError()
+    connection.send({ type: 'start_game' })
   }
 
   function handleLeaveRoom() {
@@ -306,6 +327,40 @@ export function Lobby() {
           >
             {me?.ready ? '■ CANCEL READY' : canReady ? '▶ READY UP' : 'SELECT A ROLE FIRST'}
           </button>
+
+          {/* Start game — host only */}
+          {isHost && (
+            <div style={{ marginBottom: '24px' }}>
+              <button
+                data-testid="start-game-btn"
+                class="pbtn"
+                style={{
+                  width: '100%', padding: '16px',
+                  background: canStart ? G : '#0d1a0d',
+                  color: canStart ? CARD : D,
+                  fontSize: '22px', fontWeight: 700, letterSpacing: '2px',
+                  boxShadow: canStart ? `4px 4px 0 #006644, 0 0 20px rgba(0,255,136,.2)` : `4px 4px 0 #060d06`,
+                  border: `2px solid ${canStart ? G : '#1a3a1a'}`,
+                  transition: 'all .2s',
+                }}
+                onClick={handleStartGame}
+                disabled={!canStart}
+              >
+                {canStart ? '▶ LAUNCH HEIST' : `⚠ ${startBlockReason()}`}
+              </button>
+            </div>
+          )}
+
+          {/* Non-host: show what's blocking start */}
+          {!isHost && !canStart && (
+            <div style={{
+              marginBottom: '20px', padding: '10px 14px',
+              border: `1px solid #1a2a1a`, color: D,
+              fontSize: '17px', letterSpacing: '1px', textAlign: 'center',
+            }}>
+              ⏳ {startBlockReason()}
+            </div>
+          )}
 
           {/* Player list */}
           <div style={{

@@ -208,4 +208,14 @@ test.describe('Room screen — role & ready flow', () => {
     await page.getByRole('button', { name: /ABORT MISSION/ }).click()
     await expect(page.getByRole('heading', { name: 'HEIST' })).toBeVisible({ timeout: 5_000 })
   })
+
+  test('host sees LAUNCH HEIST button, disabled with reason when not enough players', async ({ page }) => {
+    await goHome(page)
+    await createRoom(page, 'Oscar')
+    // Single player — can never start
+    const startBtn = page.getByTestId('start-game-btn')
+    await expect(startBtn).toBeVisible()
+    await expect(startBtn).toBeDisabled()
+    await expect(startBtn).toContainText('NEED')
+  })
 })

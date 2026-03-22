@@ -23,7 +23,7 @@ export const COOLDOWN_CUT_LIGHTS_TICKS = 600 // 30 seconds
 export const CUT_LIGHTS_DURATION_TICKS = 300 // 15 seconds
 
 // Game balance
-export const MIN_PLAYERS = 3
+export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 5
 export const LOOT_COUNT_MIN = 6
 export const LOOT_COUNT_MAX = 10
