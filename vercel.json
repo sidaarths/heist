@@ -4,6 +4,6 @@
   "installCommand": "bun install",
   "framework": null,
   "env": {
-    "VITE_WS_URL": "wss://heist-server.fly.dev"
+    "VITE_WS_URL": "wss://heist-server.fly.dev/ws"
   }
 }
