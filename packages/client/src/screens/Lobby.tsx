@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
-import type { ServerMessage, PlayerRole, PlayerInfo } from '@heist/shared'
+import type { PlayerRole, PlayerInfo } from '@heist/shared' // PlayerInfo used in room.players.map
 import { connection } from '../net/connection'
 import {
   currentRoom, myPlayerId, myPlayerName, myPlayer,
   isSecurityTaken, errorMessage, isLoading,
-  setRoom, setError, clearError,
+  setError, clearError, clearChatMessages,
 } from '../state/client-state'
 
 // ─── CSS animations injected once ────────────────────────────────────────────
@@ -93,76 +93,43 @@ const CARD = '#0c0c16'
 export function Lobby() {
   const [playerName, setPlayerName] = useState('')
   const [joinCode,   setJoinCode]   = useState('')
-  const [view,       setView]       = useState<'home' | 'in-room'>('home')
   const [joinMode,   setJoinMode]   = useState(false)
   const [copied,     setCopied]     = useState(false)
   const copyTimer                   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const room          = currentRoom.value
-  const me            = myPlayer.value
-  const error         = errorMessage.value
-  const loading       = isLoading.value
-  const secTaken      = isSecurityTaken.value
+  const room     = currentRoom.value
+  const me       = myPlayer.value
+  const error    = errorMessage.value
+  const loading  = isLoading.value
+  const secTaken = isSecurityTaken.value
+
+  // Derive view from signals — no local state needed
+  const inRoom  = myPlayerId.value !== null
+  const isHost  = room?.hostId === myPlayerId.value
+
+  // Start game readiness checks (evaluated client-side for UI feedback)
+  const allReady        = room ? room.players.every(p => p.ready) : false
+  const hasSecurity     = room ? room.players.some(p => p.role === 'security') : false
+  const allAssigned     = room ? room.players.every(p => p.role !== 'unassigned') : false
+  const enoughPlayers   = room ? room.players.length >= 2 : false
+  const canStart        = allReady && hasSecurity && allAssigned && enoughPlayers
+
+  function startBlockReason(): string {
+    if (!enoughPlayers) return `NEED ${2 - (room?.players.length ?? 0)} MORE PLAYER(S)`
+    if (!hasSecurity)   return 'NO SECURITY ASSIGNED'
+    if (!allAssigned)   return 'ALL PLAYERS MUST SELECT A ROLE'
+    if (!allReady)      return 'WAITING FOR ALL TO READY UP'
+    return ''
+  }
 
   useEffect(() => {
     injectCSS()
-    connection.connect()
-
-    const unsub = connection.onMessage((msg: ServerMessage) => {
-      switch (msg.type) {
-        case 'room_created':
-          myPlayerId.value = msg.playerId
-          currentRoom.value = null
-          setView('in-room')
-          clearError()
-          break
-        case 'room_joined':
-          myPlayerId.value = msg.playerId
-          setView('in-room')
-          clearError()
-          break
-        case 'room_state':
-          setRoom(msg.room)
-          isLoading.value = false
-          break
-        case 'player_updated':
-          if (currentRoom.value) {
-            const idx = currentRoom.value.players.findIndex((p: PlayerInfo) => p.id === msg.player.id)
-            if (idx >= 0) {
-              const players = [...currentRoom.value.players]
-              players[idx] = msg.player
-              currentRoom.value = { ...currentRoom.value, players }
-            }
-          }
-          break
-        case 'player_left':
-          if (currentRoom.value) {
-            currentRoom.value = {
-              ...currentRoom.value,
-              players: currentRoom.value.players.filter((p: PlayerInfo) => p.id !== msg.playerId),
-            }
-          }
-          break
-        case 'phase_change':
-          if (currentRoom.value) {
-            currentRoom.value = { ...currentRoom.value, phase: msg.phase }
-          }
-          break
-        case 'error':
-          setError(msg.message)
-          isLoading.value = false
-          break
-      }
-    })
-
-    return unsub
   }, [])
 
   function handleCreateRoom() {
     if (!playerName.trim()) { setError('ENTER YOUR CALLSIGN FIRST.'); return }
     myPlayerName.value = playerName.trim()
-    isLoading.value = true
-    clearError()
+    isLoading.value = true; clearError()
     connection.send({ type: 'create_room', playerName: playerName.trim() })
   }
 
@@ -170,8 +137,7 @@ export function Lobby() {
     if (!playerName.trim()) { setError('ENTER YOUR CALLSIGN FIRST.'); return }
     if (joinCode.trim().length !== 6) { setError('JOB CODE MUST BE 6 CHARACTERS.'); return }
     myPlayerName.value = playerName.trim()
-    isLoading.value = true
-    clearError()
+    isLoading.value = true; clearError()
     connection.send({ type: 'join_room', roomId: joinCode.trim().toUpperCase(), playerName: playerName.trim() })
   }
 
@@ -194,6 +160,11 @@ export function Lobby() {
     }).catch(() => setError('CLIPBOARD ACCESS DENIED.'))
   }
 
+  function handleStartGame() {
+    clearError()
+    connection.send({ type: 'start_game' })
+  }
+
   function handleLeaveRoom() {
     connection.disconnect()
     connection.connect()
@@ -202,7 +173,7 @@ export function Lobby() {
     myPlayerName.value = ''
     isLoading.value   = false
     clearError()
-    setView('home')
+    clearChatMessages()
     setJoinMode(false)
   }
 
@@ -252,7 +223,7 @@ export function Lobby() {
   ) : null
 
   // ─── Waiting for room data ─────────────────────────────────────────────────
-  if (view === 'in-room' && !room) {
+  if (inRoom && !room) {
     return (
       <div style={pageWrap}>
         <div class="fade-up" style={card}>
@@ -265,7 +236,7 @@ export function Lobby() {
   }
 
   // ─── In-room view ──────────────────────────────────────────────────────────
-  if (view === 'in-room' && room) {
+  if (inRoom && room) {
     const canReady = me?.role !== 'unassigned'
     return (
       <div style={pageWrap}>
@@ -274,15 +245,17 @@ export function Lobby() {
           {/* Room header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
             <span style={{ ...label, marginBottom: 0 }}>◈ JOB CODE</span>
-            <span style={{ ...label, marginBottom: 0 }}>{room.players.length}/5 AGENTS</span>
+            <span data-testid="player-count" style={{ ...label, marginBottom: 0 }}>{room.players.length}/5 AGENTS</span>
           </div>
 
           <div
+            data-testid="room-code"
             class="rcode"
             role="button"
             tabIndex={0}
             onClick={handleCopyCode}
             onKeyDown={(e) => e.key === 'Enter' && handleCopyCode()}
+            aria-label={`Copy room code ${room.id}`}
             title="Click to copy"
             style={{
               textAlign: 'center', color: copied ? G : R,
@@ -315,6 +288,7 @@ export function Lobby() {
                     : `3px 3px 0 #002c3d`,
                   opacity: secTaken && me?.role !== 'security' ? 0.35 : 1,
                 }}
+                  data-testid="security-btn"
                   onClick={() => (!secTaken || me?.role === 'security') && handleSelectRole('security')}
                   disabled={secTaken && me?.role !== 'security'}
                 >
@@ -330,6 +304,7 @@ export function Lobby() {
                     ? `3px 3px 0 #5a0077, 0 0 14px rgba(191,0,255,.4)`
                     : `3px 3px 0 #2e0040`,
                 }}
+                  data-testid="thief-btn"
                   onClick={() => handleSelectRole('thief')}
                 >
                   {me?.role === 'thief' ? '▶ THIEF' : 'THIEF'}
@@ -339,7 +314,7 @@ export function Lobby() {
           )}
 
           {/* Ready button */}
-          <button class={`pbtn${me?.ready ? ' ready-glow' : ''}`} style={{
+          <button data-testid="ready-btn" class={`pbtn${me?.ready ? ' ready-glow' : ''}`} style={{
             width: '100%', padding: '14px',
             marginBottom: '24px',
             background: me?.ready ? G : canReady ? R : '#1a1a1a',
@@ -355,6 +330,40 @@ export function Lobby() {
             {me?.ready ? '■ CANCEL READY' : canReady ? '▶ READY UP' : 'SELECT A ROLE FIRST'}
           </button>
 
+          {/* Start game — host only */}
+          {isHost && (
+            <div style={{ marginBottom: '24px' }}>
+              <button
+                data-testid="start-game-btn"
+                class="pbtn"
+                style={{
+                  width: '100%', padding: '16px',
+                  background: canStart ? G : '#0d1a0d',
+                  color: canStart ? CARD : D,
+                  fontSize: '22px', fontWeight: 700, letterSpacing: '2px',
+                  boxShadow: canStart ? `4px 4px 0 #006644, 0 0 20px rgba(0,255,136,.2)` : `4px 4px 0 #060d06`,
+                  border: `2px solid ${canStart ? G : '#1a3a1a'}`,
+                  transition: 'all .2s',
+                }}
+                onClick={handleStartGame}
+                disabled={!canStart}
+              >
+                {canStart ? '▶ LAUNCH HEIST' : `⚠ ${startBlockReason()}`}
+              </button>
+            </div>
+          )}
+
+          {/* Non-host: show what's blocking start */}
+          {!isHost && !canStart && (
+            <div style={{
+              marginBottom: '20px', padding: '10px 14px',
+              border: `1px solid #1a2a1a`, color: D,
+              fontSize: '17px', letterSpacing: '1px', textAlign: 'center',
+            }}>
+              ⏳ {startBlockReason()}
+            </div>
+          )}
+
           {/* Player list */}
           <div style={{
             display: 'flex', justifyContent: 'space-between',
@@ -364,7 +373,7 @@ export function Lobby() {
           </div>
           <ul style={{ listStyle: 'none' }}>
             {room.players.map((p: PlayerInfo, i: number) => (
-              <li key={p.id} class="prow" style={{
+              <li key={p.id} data-testid="player-row" class="prow" style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 padding: '9px 6px',
                 borderBottom: `1px solid #101810`,
@@ -385,7 +394,7 @@ export function Lobby() {
                 )}>
                   {p.role.toUpperCase()}
                 </span>
-                {p.ready && <span style={badge(G, G)}> READY</span>}
+                {p.ready && <span data-testid="ready-badge" style={badge(G, G)}> READY</span>}
                 {!p.connected && <span style={badge('#ff8800', '#ff8800')}>OFFLINE</span>}
               </li>
             ))}
@@ -429,7 +438,7 @@ export function Lobby() {
 
         {/* Name input */}
         <label style={label}>◈ YOUR CALLSIGN</label>
-        <input class="pinput" style={{ ...inputStyle, marginBottom: '22px' }}
+        <input data-testid="callsign-input" class="pinput" style={{ ...inputStyle, marginBottom: '22px' }}
           type="text"
           placeholder="Enter callsign..."
           value={playerName}
@@ -446,6 +455,7 @@ export function Lobby() {
               fontWeight: 700, fontSize: '22px', letterSpacing: '1px',
               boxShadow: `4px 4px 0 #6b0000`,
             }}
+              data-testid="host-btn"
               onClick={handleCreateRoom}
               disabled={loading}
             >
@@ -458,6 +468,7 @@ export function Lobby() {
               border: `2px solid #1e3a1e`,
               boxShadow: `4px 4px 0 #0a130a`,
             }}
+              data-testid="join-btn"
               onClick={() => { clearError(); setJoinMode(true) }}
               disabled={loading}
             >
@@ -468,7 +479,7 @@ export function Lobby() {
           /* Join panel */
           <div class="join-expand">
             <label style={label}>◈ JOB CODE</label>
-            <input class="pinput" style={{
+            <input data-testid="join-code-input" class="pinput" style={{
               ...inputStyle,
               fontFamily: "'Press Start 2P', monospace",
               fontSize: '16px', letterSpacing: '0.35em',
@@ -501,6 +512,7 @@ export function Lobby() {
                 fontWeight: 700, fontSize: '22px', letterSpacing: '1px',
                 boxShadow: `4px 4px 0 #6b0000`,
               }}
+                data-testid="crack-in-btn"
                 onClick={handleJoinRoom}
                 disabled={loading}
               >

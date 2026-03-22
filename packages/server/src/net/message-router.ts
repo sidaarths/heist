@@ -1,13 +1,18 @@
 import type { ClientMessage, ServerMessage, PlayerRole } from '@heist/shared'
+import { CHAT_MESSAGE_MAX_LEN } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 
 type Responder = (msg: ServerMessage) => void
+type ThiefBroadcast = (roomId: string, msg: ServerMessage, excludeRoles?: string[]) => void
 
 const MAX_NAME_LEN = 24
 const MAX_ROOM_ID_LEN = 12
 
 export class MessageRouter {
-  constructor(private manager: RoomManager) {}
+  constructor(
+    private manager: RoomManager,
+    private broadcastToThieves?: (roomId: string, msg: ServerMessage) => void,
+  ) {}
 
   route(playerId: string, message: ClientMessage, respond: Responder): void {
     if (!message || typeof message !== 'object' || !('type' in message)) {
@@ -28,8 +33,16 @@ export class MessageRouter {
         return this.handleSelectRole(playerId, message, respond)
       case 'set_ready':
         return this.handleSetReady(playerId, message, respond)
+      case 'start_game':
+        return this.handleStartGame(playerId, respond)
       case 'chat':
         return this.handleChat(playerId, message, respond)
+      // Phase 3 — handlers not yet implemented
+      case 'player_move':
+      case 'player_action':
+      case 'security_action':
+        respond({ type: 'error', code: 'NOT_IMPLEMENTED', message: 'This action is not available yet.' })
+        return
       default:
         respond({
           type: 'error',
@@ -48,13 +61,18 @@ export class MessageRouter {
       !message.playerName ||
       typeof message.playerName !== 'string' ||
       message.playerName.trim().length === 0 ||
-      message.playerName.length > MAX_NAME_LEN
+      message.playerName.trim().length > MAX_NAME_LEN
     ) {
       respond({
         type: 'error',
         code: 'INVALID_MESSAGE',
         message: 'Invalid player name.',
       })
+      return
+    }
+
+    if (this.manager.getRoomForPlayer(playerId)) {
+      respond({ type: 'error', code: 'ALREADY_IN_ROOM', message: 'You are already in a room.' })
       return
     }
 
@@ -93,13 +111,18 @@ export class MessageRouter {
       !message.playerName ||
       typeof message.playerName !== 'string' ||
       message.playerName.trim().length === 0 ||
-      message.playerName.length > MAX_NAME_LEN
+      message.playerName.trim().length > MAX_NAME_LEN
     ) {
       respond({
         type: 'error',
         code: 'INVALID_MESSAGE',
         message: 'Invalid player name.',
       })
+      return
+    }
+
+    if (this.manager.getRoomForPlayer(playerId)) {
+      respond({ type: 'error', code: 'ALREADY_IN_ROOM', message: 'You are already in a room.' })
       return
     }
 
@@ -183,17 +206,63 @@ export class MessageRouter {
     respond({ type: 'room_state', room: result.room })
   }
 
+  private handleStartGame(playerId: string, respond: Responder): void {
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    const result = this.manager.startGame(room.id, playerId)
+    if ('error' in result) {
+      respond({ type: 'error', code: 'START_GAME_FAILED', message: result.error })
+      return
+    }
+
+    respond({ type: 'room_state', room: result.room })
+  }
+
   private handleChat(
     playerId: string,
     message: Extract<ClientMessage, { type: 'chat' }>,
     respond: Responder,
   ): void {
-    // Chat is handled by broadcasting to all room members in the socket handler
-    // For now, just acknowledge
-    respond({
-      type: 'error',
-      code: 'NOT_IMPLEMENTED',
-      message: 'Chat will be implemented in a future phase.',
-    })
+
+    if (!message.message || typeof message.message !== 'string') {
+      respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'chat requires a "message" string.' })
+      return
+    }
+
+    const text = message.message.slice(0, CHAT_MESSAGE_MAX_LEN).trim()
+    if (!text) return
+
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    if (room.phase !== 'planning') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Chat is only available during the planning phase.' })
+      return
+    }
+
+    const sender = room.players.find(p => p.id === playerId)
+    if (!sender) return
+
+    // Only thieves can chat; security cannot send or receive thief chat
+    if (sender.role !== 'thief') {
+      respond({ type: 'error', code: 'CHAT_DENIED', message: 'Security cannot use thief chat.' })
+      return
+    }
+
+    const chatMsg: ServerMessage = {
+      type: 'chat_message',
+      fromId: playerId,
+      fromName: sender.name,
+      message: text,
+    }
+
+    this.broadcastToThieves?.(room.id, chatMsg)
   }
 }

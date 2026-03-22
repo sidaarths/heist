@@ -189,7 +189,7 @@ Server → Client: game_state_tick (20/s), phase_change, game_over, chat_message
 - [x] Bun WebSocket server with room management
 - [x] Room creation & join via 6-char code
 - [x] Role selection (Security / Thief)
-- [x] Ready-up system; game starts when all players ready with valid role composition
+- [x] Ready-up system; host clicks LAUNCH HEIST after all players ready with valid role composition
 - [x] Real-time player list sync via `room_state` broadcasts
 - [x] CORS origin matching with wildcard patterns for Vercel preview URLs
 - [x] Rate limiting (20 msg/s per connection)
@@ -204,16 +204,17 @@ Server → Client: game_state_tick (20/s), phase_change, game_over, chat_message
 
 ---
 
-## 🔲 Phase 2 — Planning Phase + Game Engine Foundation
+## ✅ Phase 2 — Planning Phase + Game Engine Foundation (COMPLETE)
 
-**Branch:** `phase-2`
+**Branch:** `phase-2`  **PR:** #3 (open)
 
 ### Goal
-When all players ready up, transition from `lobby` → `planning`. Thieves see a blurred map and can chat. Security sees the full map. After 60 seconds, auto-advance to `heist`. Build the server-side game engine tick loop and the canvas map renderer.
+Host explicitly launches the heist after all players ready up, transitioning from `lobby` → `planning`. Thieves see a blurred map and can chat. Security sees the full map. After 60 seconds, auto-advance to `heist`. Server-side game engine tick loop and canvas map renderer foundation built.
 
 ### New Shared Types
 ```typescript
 // messages.ts additions
+| { type: 'start_game' }                                        // client → server (host only)
 | { type: 'game_start'; gameState: GameState }
 | { type: 'game_state_tick'; gameState: GameState; tick: number }
 | { type: 'game_over'; winner: 'thieves' | 'security'; reason: string }
@@ -227,46 +228,22 @@ When all players ready up, transition from `lobby` → `planning`. Thieves see a
 | { type: 'chat'; message: string }
 ```
 
-### Server Tasks
-- [ ] **GameEngine class** — owns tick loop (`setInterval` at 50ms), advances `GameState`, checks win conditions
-- [ ] **Map initializer** — `initGameState(room, map)` — randomly places loot, alarm panels, exit; assigns spawn points
-- [ ] **Planning phase timer** — 60s countdown broadcast via `planning_tick`; auto-transitions to `heist`
-- [ ] **`game_start` trigger** — when room transitions from lobby, attach GameEngine to room
-- [ ] **Tick broadcast** — `server.publish(room:${roomId}, game_state_tick)` every tick
-- [ ] **Replay buffer** — append `GameState` snapshot each tick to `room.replayBuffer`
-- [ ] **Guard patrol AI** — simple waypoint follower moving along `patrolPath` at `BASE_MOVE_SPEED`
-
-### Client Tasks
-- [ ] **Canvas map renderer** — draw tiles (floor/wall/door/window/vault) from `MapDef`
-- [ ] **Security view** — full map, all entities (cameras, guards, loot, players, alarm panels)
-- [ ] **Thief view** — same canvas, clipped to `VIEWPORT_RADIUS` around player; fog-of-war
-- [ ] **Planning screen** — blurred map overlay, countdown timer, thief chat sidebar
-- [ ] **Phase router** — `phase_change` message switches active screen component
-- [ ] **Chat UI** — thieves only; input + scrolling message list; hidden from Security
-
-### TDD — Tests to Write First
-```typescript
-// server: game-engine.test.ts
-- initGameState places correct loot count within map bounds
-- initGameState places correct alarm panel count
-- initGameState assigns unique spawn points per thief
-- planning phase timer emits planning_tick every second
-- planning phase auto-transitions to heist at t=0
-- tick loop advances guard patrol index each tick
-- tick loop does not advance guards before heist phase
-
-// server: map-init.test.ts
-- loot count is within [LOOT_COUNT_MIN, LOOT_COUNT_MAX]
-- alarm panels count is within [ALARM_PANEL_COUNT_MIN, ALARM_PANEL_COUNT_MAX]
-- no two entities share the same tile
-
-// e2e: planning.spec.ts
-- after all ready, screen transitions to planning
-- planning countdown decrements from 60
-- thief chat message appears for all thieves
-- security cannot see thief chat messages
-- after 60s countdown, screen transitions to heist
-```
+### Delivered
+- [x] **`start_game` message** — host clicks LAUNCH HEIST; server validates (all ready, ≥2 players, security assigned, all roles set); transitions room to `planning`
+- [x] **GameEngine class** — `advanceTick()` heist loop; `tickPlanningSecond()` planning countdown; `replayBuffer` snapshot accumulation
+- [x] **Map initializer** — `initGameState(room, map)` — randomly places loot, alarm panels, exit with unique-tile guarantee; assigns spawn points
+- [x] **Planning phase timer** — `GameSessionManager.startPlanning()` runs 1s countdown; broadcasts `planning_tick`; auto-transitions to `startHeist()` at t=0
+- [x] **Heist tick loop** — `startHeist()` runs `setInterval` at 50ms; broadcasts `game_state_tick`
+- [x] **Guard patrol AI** — waypoint follower advancing along `patrolPath` with wrap-around
+- [x] **Thief chat** — `chat` client message → broadcast `chat_message` to thieves only; Security excluded
+- [x] **Phase router (`App.tsx`)** — all WebSocket messages handled centrally; `phase === 'planning'` → `<Planning />`
+- [x] **Planning screen (`Planning.tsx`)** — split layout: blurred map (thieves) / full map (Security); countdown timer turns red ≤10s; thief chat sidebar
+- [x] **Signal-driven lobby navigation** — `inRoom = myPlayerId.value !== null`; eliminates local view state
+- [x] **LAUNCH HEIST button** — host-only; disabled with reason until all conditions met; `data-testid="start-game-btn"`
+- [x] **MIN_PLAYERS = 2** — games can start with 1 Security + 1 Thief (supports 2–5 players)
+- [x] **64 server unit tests** (game-engine, map-init, lobby startGame validation)
+- [x] **39 Playwright E2E tests** — lobby (24), multiplayer (6), planning (9; 7 two-player + 2 three-player)
+- [x] **Security hardening** — ALREADY_IN_ROOM guard (ghost player DoS), chat locked to planning phase only, `selectRole`/`setReady` blocked after lobby, chatMessages client cap (200), iterative room code generation, MAX_PLAYERS constant in error strings, generic join error (no roomId echo), trim-before-length name validation
 
 ---
 
@@ -389,14 +366,35 @@ FREEZE_DURATION_TICKS  = 600       // 30s
 COOLDOWN_LOCK_DOOR     = 60        // 3s
 COOLDOWN_CUT_LIGHTS    = 600       // 30s
 CUT_LIGHTS_DURATION    = 300       // 15s
-MIN_PLAYERS            = 3
-MAX_PLAYERS            = 5
+MIN_PLAYERS            = 2
+MAX_PLAYERS            = 5         // 1 Security + up to 4 Thieves
+CHAT_MESSAGE_MAX_LEN   = 200       // enforced server-side + maxLength on client input
+REPLAY_BUFFER_MAX      = 6_000     // max snapshots retained (~5 min @ 20tps)
 LOOT_COUNT_MIN         = 6
 LOOT_COUNT_MAX         = 10
 ALARM_PANEL_COUNT_MIN  = 4
 ALARM_PANEL_COUNT_MAX  = 6
 LOOT_TO_WIN            = 3
 ```
+
+---
+
+## Security Notes
+
+### Fixed (Phase 2)
+- Ghost player DoS: `ALREADY_IN_ROOM` guard prevents a player joining a second room without leaving the first
+- Chat phase gate: `handleChat` rejects with `WRONG_PHASE` outside `planning`
+- Lobby-only mutations: `selectRole` and `setReady` reject when `room.phase !== 'lobby'`
+- Client memory: `chatMessages` capped at 200 entries; oldest dropped on overflow
+- Input validation: player name trimmed before length check; raw `roomId` no longer echoed in join errors
+- Room code generation: iterative loop with 10-attempt cap (no unbounded recursion)
+
+### Deferred
+- **IP-level rate limiting** — current per-UUID rate limit resets on reconnect; add IP-based window at upgrade handler
+- **Stale room TTL** — `ROOM_CLEANUP_DELAY_MS` constant exists but sweep not implemented; add periodic cleanup job
+- **Origin wildcard documentation** — bare `*` in `ALLOWED_ORIGINS` silently allows any origin; needs explicit rejection or doc warning
+- **`player_move` bounds** — `dx`/`dy` must be clamped to `[-1, 1]` server-side when Phase 3 is implemented; do not trust raw client values
+- **Security headers** — add `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy` via Hono middleware
 
 ---
 
@@ -416,17 +414,20 @@ packages/
 │   ├── net/
 │   │   ├── socket-handler.ts   ✅
 │   │   └── message-router.ts   ✅
-│   ├── game/                   🔲 Phase 2
-│   │   ├── game-engine.ts      — tick loop, state advance
-│   │   ├── map-init.ts         — random placement
-│   │   ├── movement.ts         — collision, speed
-│   │   ├── interactions.ts     — pick-lock, loot, camera
-│   │   ├── security-actions.ts — door, alarm, lights, guard
-│   │   ├── win-conditions.ts   — check every tick
-│   │   └── replay-buffer.ts    — snapshot accumulation
+│   ├── game/                   ✅ Phase 2 (partial)
+│   │   ├── game-engine.ts      ✅ tick loop, guard AI, replay buffer
+│   │   ├── map-init.ts         ✅ random placement
+│   │   ├── session-manager.ts  ✅ planning timer, heist tick loop
+│   │   ├── movement.ts         🔲 Phase 3
+│   │   ├── interactions.ts     🔲 Phase 3
+│   │   ├── security-actions.ts 🔲 Phase 3
+│   │   ├── win-conditions.ts   🔲 Phase 3
+│   │   └── replay-buffer.ts    🔲 Phase 4
 │   └── __tests__/
 │       ├── socket-handler.test.ts  ✅
-│       ├── game-engine.test.ts     🔲 Phase 2
+│       ├── lobby.test.ts           ✅
+│       ├── game-engine.test.ts     ✅
+│       ├── map-init.test.ts        ✅
 │       ├── movement.test.ts        🔲 Phase 3
 │       ├── interactions.test.ts    🔲 Phase 3
 │       ├── security-actions.test.ts 🔲 Phase 3
@@ -441,11 +442,11 @@ packages/
     │   └── connection.ts    ✅
     ├── screens/
     │   ├── Lobby.tsx        ✅
-    │   ├── Planning.tsx     🔲 Phase 2
+    │   ├── Planning.tsx     ✅
     │   ├── Heist.tsx        🔲 Phase 3
     │   ├── Resolution.tsx   🔲 Phase 4
     │   └── Replay.tsx       🔲 Phase 4
-    ├── canvas/              🔲 Phase 2
+    ├── canvas/              🔲 Phase 3
     │   ├── MapRenderer.ts   — draw tiles
     │   ├── EntityLayer.ts   — draw players, loot, cameras, guards
     │   ├── FogOfWar.ts      — thief viewport clipping
@@ -453,7 +454,7 @@ packages/
     └── tests/e2e/
         ├── lobby.spec.ts        ✅
         ├── multiplayer.spec.ts  ✅
-        ├── planning.spec.ts     🔲 Phase 2
+        ├── planning.spec.ts     ✅
         ├── heist.spec.ts        🔲 Phase 3
         └── resolution.spec.ts   🔲 Phase 4
 ```

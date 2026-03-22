@@ -22,16 +22,15 @@ export class RoomManager {
   playerRoomMap: Map<string, string> = new Map()
 
   generateRoomCode(): string {
-    const bytes = randomBytes(ROOM_CODE_LENGTH)
-    let code = ''
-    for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-      code += ALPHANUMERIC[bytes[i] % ALPHANUMERIC.length]
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const bytes = randomBytes(ROOM_CODE_LENGTH)
+      let code = ''
+      for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
+        code += ALPHANUMERIC[bytes[i] % ALPHANUMERIC.length]
+      }
+      if (!this.rooms.has(code)) return code
     }
-    // Ensure uniqueness
-    if (this.rooms.has(code)) {
-      return this.generateRoomCode()
-    }
-    return code
+    throw new Error('Could not generate a unique room code after 10 attempts.')
   }
 
   createRoom(playerName: string, playerId: string): RoomResult {
@@ -43,7 +42,7 @@ export class RoomManager {
 
     const player: PlayerInfo = {
       id: playerId,
-      name: playerName,
+      name: playerName.trim(),
       role: 'unassigned',
       ready: false,
       connected: true,
@@ -68,7 +67,7 @@ export class RoomManager {
     const room = this.rooms.get(normalizedId)
 
     if (!room) {
-      return { error: `Room '${roomId}' not found. Check the code and try again.` }
+      return { error: 'Room not found. Check the code and try again.' }
     }
 
     if (room.phase !== 'lobby') {
@@ -76,12 +75,12 @@ export class RoomManager {
     }
 
     if (room.players.length >= MAX_PLAYERS) {
-      return { error: 'Room is full. Maximum 5 players allowed.' }
+      return { error: `Room is full. Maximum ${MAX_PLAYERS} players allowed.` }
     }
 
     const player: PlayerInfo = {
       id: playerId,
-      name: playerName,
+      name: playerName.trim(),
       role: 'unassigned',
       ready: false,
       connected: true,
@@ -97,6 +96,10 @@ export class RoomManager {
     const room = this.rooms.get(roomId)
     if (!room) {
       return { error: `Room '${roomId}' not found.` }
+    }
+
+    if (room.phase !== 'lobby') {
+      return { error: 'Cannot change role after the game has started.' }
     }
 
     const player = room.players.find(p => p.id === playerId)
@@ -129,6 +132,10 @@ export class RoomManager {
       return { error: `Room '${roomId}' not found.` }
     }
 
+    if (room.phase !== 'lobby') {
+      return { error: 'Cannot change ready state after the game has started.' }
+    }
+
     const player = room.players.find(p => p.id === playerId)
     if (!player) {
       return { error: 'Player not found in room.' }
@@ -136,18 +143,29 @@ export class RoomManager {
 
     player.ready = ready
 
-    // Check if game can start
-    const allReady = room.players.every(p => p.ready)
-    const hasEnoughPlayers = room.players.length >= MIN_PLAYERS
-    const hasSecurity = room.players.some(p => p.role === 'security')
-    const allAssigned = room.players.every(p => p.role !== 'unassigned')
-
-    if (allReady && hasEnoughPlayers && hasSecurity && allAssigned) {
-      room.phase = 'planning'
-      return { room, started: true }
-    }
-
     return { room, started: false }
+  }
+
+  startGame(roomId: string, requesterId: string): { room: GameRoom } | { error: string } {
+    const room = this.rooms.get(roomId)
+    if (!room) return { error: `Room '${roomId}' not found.` }
+    if (room.hostId !== requesterId) return { error: 'Only the host can start the game.' }
+    if (room.phase !== 'lobby') return { error: 'Game has already started.' }
+
+    const allReady = room.players.every(p => p.ready)
+    if (!allReady) return { error: 'All players must be ready before starting.' }
+
+    const hasEnoughPlayers = room.players.length >= MIN_PLAYERS
+    if (!hasEnoughPlayers) return { error: `Need at least ${MIN_PLAYERS} players to start.` }
+
+    const hasSecurity = room.players.some(p => p.role === 'security')
+    if (!hasSecurity) return { error: 'A Security player must be assigned before starting.' }
+
+    const allAssigned = room.players.every(p => p.role !== 'unassigned')
+    if (!allAssigned) return { error: 'All players must select a role before starting.' }
+
+    room.phase = 'planning'
+    return { room }
   }
 
   leaveRoom(roomId: string, playerId: string): LeaveResult {

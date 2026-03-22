@@ -217,7 +217,7 @@ describe('RoomManager', () => {
       }
     })
 
-    it('does not start game if fewer than 3 players', () => {
+    it('does not auto-start game when players ready up (host must call startGame)', () => {
       const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
@@ -282,7 +282,7 @@ describe('RoomManager', () => {
       }
     })
 
-    it('transitions to planning phase when all players ready and valid', () => {
+    it('setReady no longer auto-transitions — phase stays lobby until host calls startGame', () => {
       const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)
       const { room, player: alice } = createResult
@@ -298,15 +298,120 @@ describe('RoomManager', () => {
 
       manager.setReady(room.id, alice.id, true)
       manager.setReady(room.id, j1.player.id, true)
-      const result = manager.setReady(room.id, j2.player.id, true)
+      const readyResult = manager.setReady(room.id, j2.player.id, true)
 
+      expect('error' in readyResult).toBe(false)
+      if (!('error' in readyResult)) {
+        expect(readyResult.started).toBe(false)
+        expect(readyResult.room.phase).toBe('lobby')
+      }
+
+      // Host explicitly starts the game
+      const startResult = manager.startGame(room.id, alice.id)
+      expect('error' in startResult).toBe(false)
+      if (!('error' in startResult)) {
+        expect(startResult.room.phase).toBe('planning')
+      }
+    })
+
+  })
+
+  describe('startGame', () => {
+    function makeReadyRoom() {
+      const createResult = manager.createRoom('Alice', randomUUID())
+      if ('error' in createResult) throw new Error('createRoom failed')
+      const { room, player: alice } = createResult
+      const j1 = manager.joinRoom(room.id, 'Bob', randomUUID())
+      if ('error' in j1) throw new Error('joinRoom failed')
+      const j2 = manager.joinRoom(room.id, 'Charlie', randomUUID())
+      if ('error' in j2) throw new Error('joinRoom failed')
+      manager.selectRole(room.id, alice.id, 'security')
+      manager.selectRole(room.id, j1.player.id, 'thief')
+      manager.selectRole(room.id, j2.player.id, 'thief')
+      manager.setReady(room.id, alice.id, true)
+      manager.setReady(room.id, j1.player.id, true)
+      manager.setReady(room.id, j2.player.id, true)
+      return { room, alice, bob: j1.player, charlie: j2.player }
+    }
+
+    it('host can start the game when all conditions are met', () => {
+      const { room, alice } = makeReadyRoom()
+      const result = manager.startGame(room.id, alice.id)
+      expect('error' in result).toBe(false)
+      if (!('error' in result)) expect(result.room.phase).toBe('planning')
+    })
+
+    it('rejects start from a non-host player', () => {
+      const { room, bob } = makeReadyRoom()
+      const result = manager.startGame(room.id, bob.id)
+      expect('error' in result).toBe(true)
+    })
+
+    it('rejects start when not all players are ready', () => {
+      const createResult = manager.createRoom('Alice', randomUUID())
+      if ('error' in createResult) throw new Error()
+      const { room, player: alice } = createResult
+      const j1 = manager.joinRoom(room.id, 'Bob', randomUUID())
+      if ('error' in j1) throw new Error()
+      const j2 = manager.joinRoom(room.id, 'Charlie', randomUUID())
+      if ('error' in j2) throw new Error()
+      manager.selectRole(room.id, alice.id, 'security')
+      manager.selectRole(room.id, j1.player.id, 'thief')
+      manager.selectRole(room.id, j2.player.id, 'thief')
+      manager.setReady(room.id, alice.id, true)
+      // Bob and Charlie not ready
+      const result = manager.startGame(room.id, alice.id)
+      expect('error' in result).toBe(true)
+    })
+
+    it('rejects start with fewer than MIN_PLAYERS (solo host)', () => {
+      // Only 1 player (the host) — below the 2-player minimum
+      const createResult = manager.createRoom('Alice', randomUUID())
+      if ('error' in createResult) throw new Error()
+      const { room, player: alice } = createResult
+      manager.selectRole(room.id, alice.id, 'security')
+      manager.setReady(room.id, alice.id, true)
+      const result = manager.startGame(room.id, alice.id)
+      expect('error' in result).toBe(true)
+    })
+
+    it('starts game successfully with MIN_PLAYERS (1 security + 1 thief)', () => {
+      const createResult = manager.createRoom('Alice', randomUUID())
+      if ('error' in createResult) throw new Error()
+      const { room, player: alice } = createResult
+      const j1 = manager.joinRoom(room.id, 'Bob', randomUUID())
+      if ('error' in j1) throw new Error()
+      manager.selectRole(room.id, alice.id, 'security')
+      manager.selectRole(room.id, j1.player.id, 'thief')
+      manager.setReady(room.id, alice.id, true)
+      manager.setReady(room.id, j1.player.id, true)
+      const result = manager.startGame(room.id, alice.id)
       expect('error' in result).toBe(false)
       if (!('error' in result)) {
-        expect(result.started).toBe(true)
         expect(result.room.phase).toBe('planning')
       }
     })
 
+    it('rejects start without a security player', () => {
+      const createResult = manager.createRoom('Alice', randomUUID())
+      if ('error' in createResult) throw new Error()
+      const { room, player: alice } = createResult
+      const j1 = manager.joinRoom(room.id, 'Bob', randomUUID())
+      if ('error' in j1) throw new Error()
+      const j2 = manager.joinRoom(room.id, 'Charlie', randomUUID())
+      if ('error' in j2) throw new Error()
+      manager.selectRole(room.id, alice.id, 'thief')
+      manager.selectRole(room.id, j1.player.id, 'thief')
+      manager.selectRole(room.id, j2.player.id, 'thief')
+      manager.setReady(room.id, alice.id, true)
+      manager.setReady(room.id, j1.player.id, true)
+      manager.setReady(room.id, j2.player.id, true)
+      const result = manager.startGame(room.id, alice.id)
+      expect('error' in result).toBe(true)
+    })
+  })
+
+  describe('setReady (continued)', () => {
     it('unready resets if player changes role', () => {
       const createResult = manager.createRoom('Alice', randomUUID())
       if ('error' in createResult) throw new Error(createResult.error)

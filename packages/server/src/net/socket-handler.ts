@@ -2,6 +2,7 @@ import type { ServerWebSocket } from 'bun'
 import type { ClientMessage, ServerMessage } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 import { MessageRouter } from './message-router'
+import { GameSessionManager } from '../game/session-manager'
 
 export interface SocketData {
   playerId: string
@@ -14,12 +15,18 @@ interface RateLimit {
 
 export class SocketHandler {
   private router: MessageRouter
+  private sessions: GameSessionManager
   connections: Map<string, ServerWebSocket<SocketData>> = new Map()
   private rateLimits: Map<string, RateLimit> = new Map()
   server: ReturnType<typeof Bun.serve> | null = null
 
   constructor(private manager: RoomManager) {
-    this.router = new MessageRouter(manager)
+    this.router = new MessageRouter(manager, (roomId, msg) =>
+      this.broadcastToThieves(roomId, msg),
+    )
+    this.sessions = new GameSessionManager(manager, (roomId, msg) =>
+      this.broadcast(roomId, msg),
+    )
   }
 
   open(ws: ServerWebSocket<SocketData>): void {
@@ -80,6 +87,11 @@ export class SocketHandler {
         const roomId = this.manager.playerRoomMap.get(playerId)
         if (roomId) {
           this.broadcastRoomState(roomId, playerId)
+          // Kick off planning phase if the room just transitioned
+          const room = this.manager.getRoom(roomId)
+          if (room?.phase === 'planning') {
+            this.sessions.startPlanning(roomId)
+          }
         }
       }
     })
@@ -92,10 +104,15 @@ export class SocketHandler {
     const roomId = this.manager.playerRoomMap.get(playerId)
     if (roomId) {
       const result = this.manager.leaveRoom(roomId, playerId)
-      this.manager.playerRoomMap.delete(playerId)
+      // playerRoomMap is already cleaned up inside leaveRoom()
       if (result.room) {
         this.broadcastRoomState(roomId)
         this.broadcast(roomId, { type: 'player_left', playerId })
+        // Stop any active game session — a disconnection during planning/heist ends the game
+        this.sessions.stopRoom(roomId)
+      } else {
+        // Room was cleaned up (last player) — stop session if it somehow outlived the room
+        this.sessions.stopRoom(roomId)
       }
     }
 
@@ -113,6 +130,20 @@ export class SocketHandler {
   broadcast(roomId: string, message: ServerMessage): void {
     if (this.server) {
       this.server.publish(`room:${roomId}`, JSON.stringify(message))
+    }
+  }
+
+  /**
+   * Broadcast a message to all thieves in a room (excludes security).
+   */
+  private broadcastToThieves(roomId: string, message: ServerMessage): void {
+    const room = this.manager.getRoom(roomId)
+    if (!room) return
+    const msg = JSON.stringify(message)
+    for (const player of room.players) {
+      if (player.role === 'thief') {
+        this.connections.get(player.id)?.send(msg)
+      }
     }
   }
 

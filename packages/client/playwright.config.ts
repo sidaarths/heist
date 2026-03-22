@@ -17,11 +17,13 @@ export default defineConfig({
   // so we don't share state between scenarios.
   fullyParallel: true,
 
-  // Retry once in CI to absorb transient network noise; never locally.
-  retries: process.env.CI ? 1 : 0,
+  // Retry once to absorb transient WS-server noise; the single-process Bun
+  // server can briefly time out when all browser projects hammer it in parallel.
+  retries: 1,
 
-  // Limit workers in CI to avoid exhausting the machine's ports.
-  workers: process.env.CI ? 2 : undefined,
+  // Cap workers so the in-memory WS server isn't overwhelmed by concurrent
+  // room creation across browser projects.
+  workers: process.env.CI ? 2 : 4,
 
   reporter: [
     ['html', { open: 'never', outputFolder: 'playwright-report' }],
