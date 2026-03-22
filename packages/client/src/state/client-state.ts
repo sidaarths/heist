@@ -39,8 +39,11 @@ export const planningSecondsRemaining = signal<number>(Math.floor(PLANNING_DURAT
 export interface ChatEntry { fromName: string; message: string; id: number }
 export const chatMessages = signal<ChatEntry[]>([])
 let chatSeq = 0
+const MAX_CHAT_DISPLAY = 200
+
 export function addChatMessage(fromName: string, message: string): void {
-  chatMessages.value = [...chatMessages.value, { fromName, message, id: chatSeq++ }]
+  const next = [...chatMessages.value, { fromName, message, id: chatSeq++ }]
+  chatMessages.value = next.length > MAX_CHAT_DISPLAY ? next.slice(-MAX_CHAT_DISPLAY) : next
 }
 export function clearChatMessages(): void {
   chatMessages.value = []

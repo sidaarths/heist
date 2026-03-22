@@ -243,6 +243,7 @@ Host explicitly launches the heist after all players ready up, transitioning fro
 - [x] **MIN_PLAYERS = 2** — games can start with 1 Security + 1 Thief (supports 2–5 players)
 - [x] **64 server unit tests** (game-engine, map-init, lobby startGame validation)
 - [x] **39 Playwright E2E tests** — lobby (24), multiplayer (6), planning (9; 7 two-player + 2 three-player)
+- [x] **Security hardening** — ALREADY_IN_ROOM guard (ghost player DoS), chat locked to planning phase only, `selectRole`/`setReady` blocked after lobby, chatMessages client cap (200), iterative room code generation, MAX_PLAYERS constant in error strings, generic join error (no roomId echo), trim-before-length name validation
 
 ---
 
@@ -366,13 +367,34 @@ COOLDOWN_LOCK_DOOR     = 60        // 3s
 COOLDOWN_CUT_LIGHTS    = 600       // 30s
 CUT_LIGHTS_DURATION    = 300       // 15s
 MIN_PLAYERS            = 2
-MAX_PLAYERS            = 5
+MAX_PLAYERS            = 5         // 1 Security + up to 4 Thieves
+CHAT_MESSAGE_MAX_LEN   = 200       // enforced server-side + maxLength on client input
+REPLAY_BUFFER_MAX      = 6_000     // max snapshots retained (~5 min @ 20tps)
 LOOT_COUNT_MIN         = 6
 LOOT_COUNT_MAX         = 10
 ALARM_PANEL_COUNT_MIN  = 4
 ALARM_PANEL_COUNT_MAX  = 6
 LOOT_TO_WIN            = 3
 ```
+
+---
+
+## Security Notes
+
+### Fixed (Phase 2)
+- Ghost player DoS: `ALREADY_IN_ROOM` guard prevents a player joining a second room without leaving the first
+- Chat phase gate: `handleChat` rejects with `WRONG_PHASE` outside `planning`
+- Lobby-only mutations: `selectRole` and `setReady` reject when `room.phase !== 'lobby'`
+- Client memory: `chatMessages` capped at 200 entries; oldest dropped on overflow
+- Input validation: player name trimmed before length check; raw `roomId` no longer echoed in join errors
+- Room code generation: iterative loop with 10-attempt cap (no unbounded recursion)
+
+### Deferred
+- **IP-level rate limiting** — current per-UUID rate limit resets on reconnect; add IP-based window at upgrade handler
+- **Stale room TTL** — `ROOM_CLEANUP_DELAY_MS` constant exists but sweep not implemented; add periodic cleanup job
+- **Origin wildcard documentation** — bare `*` in `ALLOWED_ORIGINS` silently allows any origin; needs explicit rejection or doc warning
+- **`player_move` bounds** — `dx`/`dy` must be clamped to `[-1, 1]` server-side when Phase 3 is implemented; do not trust raw client values
+- **Security headers** — add `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy` via Hono middleware
 
 ---
 

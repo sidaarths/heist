@@ -61,13 +61,18 @@ export class MessageRouter {
       !message.playerName ||
       typeof message.playerName !== 'string' ||
       message.playerName.trim().length === 0 ||
-      message.playerName.length > MAX_NAME_LEN
+      message.playerName.trim().length > MAX_NAME_LEN
     ) {
       respond({
         type: 'error',
         code: 'INVALID_MESSAGE',
         message: 'Invalid player name.',
       })
+      return
+    }
+
+    if (this.manager.getRoomForPlayer(playerId)) {
+      respond({ type: 'error', code: 'ALREADY_IN_ROOM', message: 'You are already in a room.' })
       return
     }
 
@@ -106,13 +111,18 @@ export class MessageRouter {
       !message.playerName ||
       typeof message.playerName !== 'string' ||
       message.playerName.trim().length === 0 ||
-      message.playerName.length > MAX_NAME_LEN
+      message.playerName.trim().length > MAX_NAME_LEN
     ) {
       respond({
         type: 'error',
         code: 'INVALID_MESSAGE',
         message: 'Invalid player name.',
       })
+      return
+    }
+
+    if (this.manager.getRoomForPlayer(playerId)) {
+      respond({ type: 'error', code: 'ALREADY_IN_ROOM', message: 'You are already in a room.' })
       return
     }
 
@@ -229,6 +239,11 @@ export class MessageRouter {
     const room = this.manager.getRoomForPlayer(playerId)
     if (!room) {
       respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    if (room.phase !== 'planning') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Chat is only available during the planning phase.' })
       return
     }
 

@@ -22,16 +22,15 @@ export class RoomManager {
   playerRoomMap: Map<string, string> = new Map()
 
   generateRoomCode(): string {
-    const bytes = randomBytes(ROOM_CODE_LENGTH)
-    let code = ''
-    for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-      code += ALPHANUMERIC[bytes[i] % ALPHANUMERIC.length]
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const bytes = randomBytes(ROOM_CODE_LENGTH)
+      let code = ''
+      for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
+        code += ALPHANUMERIC[bytes[i] % ALPHANUMERIC.length]
+      }
+      if (!this.rooms.has(code)) return code
     }
-    // Ensure uniqueness
-    if (this.rooms.has(code)) {
-      return this.generateRoomCode()
-    }
-    return code
+    throw new Error('Could not generate a unique room code after 10 attempts.')
   }
 
   createRoom(playerName: string, playerId: string): RoomResult {
@@ -68,7 +67,7 @@ export class RoomManager {
     const room = this.rooms.get(normalizedId)
 
     if (!room) {
-      return { error: `Room '${roomId}' not found. Check the code and try again.` }
+      return { error: 'Room not found. Check the code and try again.' }
     }
 
     if (room.phase !== 'lobby') {
@@ -76,7 +75,7 @@ export class RoomManager {
     }
 
     if (room.players.length >= MAX_PLAYERS) {
-      return { error: 'Room is full. Maximum 5 players allowed.' }
+      return { error: `Room is full. Maximum ${MAX_PLAYERS} players allowed.` }
     }
 
     const player: PlayerInfo = {
@@ -97,6 +96,10 @@ export class RoomManager {
     const room = this.rooms.get(roomId)
     if (!room) {
       return { error: `Room '${roomId}' not found.` }
+    }
+
+    if (room.phase !== 'lobby') {
+      return { error: 'Cannot change role after the game has started.' }
     }
 
     const player = room.players.find(p => p.id === playerId)
@@ -127,6 +130,10 @@ export class RoomManager {
     const room = this.rooms.get(roomId)
     if (!room) {
       return { error: `Room '${roomId}' not found.` }
+    }
+
+    if (room.phase !== 'lobby') {
+      return { error: 'Cannot change ready state after the game has started.' }
     }
 
     const player = room.players.find(p => p.id === playerId)

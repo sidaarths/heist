@@ -188,9 +188,10 @@ test.describe('Room screen — role & ready flow', () => {
     await expect(page.getByTestId('ready-badge')).toBeVisible({ timeout: 5_000 })
   })
 
-  test('clicking room code shows COPIED feedback', async ({ browser }) => {
-    // Grant clipboard permissions so navigator.clipboard.writeText works
-    const ctx = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] })
+  test('clicking room code shows COPIED feedback', async ({ browser, browserName }) => {
+    // Firefox does not support clipboard permissions via newContext; Chromium/WebKit do
+    const permissions = browserName === 'firefox' ? [] : ['clipboard-read', 'clipboard-write']
+    const ctx = await browser.newContext({ permissions })
     const page = await ctx.newPage()
     try {
       await goHome(page)
