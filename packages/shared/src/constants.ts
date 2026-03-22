@@ -7,7 +7,7 @@ export const LOCKDOWN_DURATION_MS = 90 * 1000 // 90 seconds
 // Player
 export const VIEWPORT_RADIUS = 200 // pixels
 export const VIEWPORT_RADIUS_DIMMED = 100 // when lights cut
-export const BASE_MOVE_SPEED = 3 // pixels per tick
+export const BASE_MOVE_SPEED = 0.15 // tiles per tick (~5 px/tick at TILE_SIZE=32)
 export const LOOT_SPEED_PENALTY = 0.7 // multiplier per loot item
 
 // Thief interaction durations (in ticks)

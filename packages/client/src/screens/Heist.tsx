@@ -9,7 +9,7 @@
  *  - HUD: role label, loot count, lockdown banner + timer
  *  - Security toolbar (only shown to Security player)
  */
-import { useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import type { GameState } from '@heist/shared'
 import { connection } from '../net/connection'
 import {
@@ -54,20 +54,26 @@ interface CooldownMap {
   release_guard: number
 }
 
+type TargetingAction = 'lock_door' | 'release_guard' | null
+
 // ─── Security toolbar button ──────────────────────────────────────────────────
 function SecurityButton({
   testId,
   label,
   cooldown,
+  active,
   onClick,
 }: {
   testId: string
   label: string
   cooldown: number
+  active?: boolean
   onClick: () => void
 }) {
   const disabled = cooldown > 0
   const secs = Math.ceil(cooldown / TICK_RATE)
+  const borderColor = active ? '#ffcc00' : (disabled ? '#222' : P)
+  const textColor   = active ? '#ffcc00' : (disabled ? '#333' : P)
   return (
     <button
       data-testid={testId}
@@ -75,9 +81,9 @@ function SecurityButton({
       disabled={disabled}
       style={{
         padding: '10px 14px',
-        background: disabled ? '#0a0a0f' : '#100014',
-        color: disabled ? '#333' : P,
-        border: `2px solid ${disabled ? '#222' : P}`,
+        background: active ? '#1a1400' : (disabled ? '#0a0a0f' : '#100014'),
+        color: textColor,
+        border: `2px solid ${borderColor}`,
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: "'VT323', monospace",
         fontSize: '18px',
@@ -87,27 +93,29 @@ function SecurityButton({
         transition: 'all .15s',
       }}
     >
-      {disabled ? `${label} [${secs}s]` : label}
+      {active ? `${label} ◀ CLICK MAP` : (disabled ? `${label} [${secs}s]` : label)}
     </button>
   )
 }
 
 // ─── Security Toolbar ─────────────────────────────────────────────────────────
-function SecurityToolbar({ cooldowns, setCooldowns }: {
+function SecurityToolbar({ cooldowns, setCooldowns, targeting, setTargeting, waypoints, onSendGuard }: {
   cooldowns: CooldownMap
   setCooldowns: (c: CooldownMap) => void
+  targeting: TargetingAction
+  setTargeting: (t: TargetingAction) => void
+  waypoints: Array<{ x: number; y: number }>
+  onSendGuard: () => void
 }) {
-  function sendAction(action: keyof CooldownMap, targetId?: string) {
-    connection.send({ type: 'security_action', action, targetId })
-    // Optimistic local cooldown display
+  function sendImmediate(action: keyof CooldownMap) {
+    connection.send({ type: 'security_action', action })
     const CD: Record<string, number> = {
       lock_door: 60,
       cut_lights: 600,
       trigger_alarm: 0,
       release_guard: 0,
     }
-    const newCd = { ...cooldowns, [action]: CD[action] ?? 0 }
-    setCooldowns(newCd)
+    setCooldowns({ ...cooldowns, [action]: CD[action] ?? 0 })
   }
 
   return (
@@ -126,30 +134,62 @@ function SecurityToolbar({ cooldowns, setCooldowns }: {
       <span style={{ color: B, fontFamily: "'VT323', monospace", fontSize: '18px', letterSpacing: '2px', marginRight: '6px' }}>
         ▶ SEC TOOLKIT:
       </span>
+
+      {/* LOCK DOOR — targeting mode: click a door on map */}
       <SecurityButton
         testId="btn-lock-door"
         label="LOCK DOOR"
         cooldown={cooldowns.lock_door}
-        onClick={() => sendAction('lock_door')}
+        active={targeting === 'lock_door'}
+        onClick={() => setTargeting(targeting === 'lock_door' ? null : 'lock_door')}
       />
+
       <SecurityButton
         testId="btn-trigger-alarm"
         label="TRIGGER ALARM"
         cooldown={cooldowns.trigger_alarm}
-        onClick={() => sendAction('trigger_alarm')}
+        onClick={() => sendImmediate('trigger_alarm')}
       />
       <SecurityButton
         testId="btn-cut-lights"
         label="CUT LIGHTS"
         cooldown={cooldowns.cut_lights}
-        onClick={() => sendAction('cut_lights')}
+        onClick={() => sendImmediate('cut_lights')}
       />
+
+      {/* RELEASE GUARD — targeting mode: click waypoints, confirm */}
       <SecurityButton
         testId="btn-release-guard"
         label="RELEASE GUARD"
         cooldown={cooldowns.release_guard}
-        onClick={() => sendAction('release_guard')}
+        active={targeting === 'release_guard'}
+        onClick={() => setTargeting(targeting === 'release_guard' ? null : 'release_guard')}
       />
+
+      {targeting === 'release_guard' && waypoints.length > 0 && (
+        <button
+          data-testid="btn-send-guard"
+          onClick={onSendGuard}
+          style={{
+            padding: '10px 14px',
+            background: '#001a00',
+            color: G,
+            border: `2px solid ${G}`,
+            cursor: 'pointer',
+            fontFamily: "'VT323', monospace",
+            fontSize: '18px',
+            letterSpacing: '1px',
+          }}
+        >
+          SEND ({waypoints.length} pts)
+        </button>
+      )}
+
+      {targeting && (
+        <span style={{ color: '#ffcc00', fontFamily: "'VT323', monospace", fontSize: '16px' }}>
+          {targeting === 'lock_door' ? '▶ Click a door on the map' : '▶ Click waypoints, then SEND'}
+        </span>
+      )}
     </div>
   )
 }
@@ -257,7 +297,7 @@ export function Heist() {
   const role        = me?.role ?? 'thief'
   const isSecurity  = role === 'security'
 
-  // Cooldown state for toolbar display (ref to avoid signal re-renders for cooldowns)
+  // Cooldown ref: avoids signal re-renders for per-tick countdown
   const cooldownsRef = useRef<CooldownMap>({
     lock_door: 0,
     cut_lights: 0,
@@ -265,12 +305,16 @@ export function Heist() {
     release_guard: 0,
   })
 
-  // Build playerRoleMap from room players
-  const playerRoleMap: Record<string, string> = {}
+  // Targeting state — uses useState so toolbar UI re-renders
+  const [targeting, setTargeting] = useState<TargetingAction>(null)
+  const [waypoints, setWaypoints] = useState<Array<{ x: number; y: number }>>([])
+
+  // playerRoleMap ref so canvas rAF loop always reads latest value
+  const playerRoleMapRef = useRef<Record<string, string>>({})
   if (room) {
-    for (const p of room.players) {
-      playerRoleMap[p.id] = p.role
-    }
+    const map: Record<string, string> = {}
+    for (const p of room.players) map[p.id] = p.role
+    playerRoleMapRef.current = map
   }
 
   // ── Canvas render loop ────────────────────────────────────────────────────
@@ -278,7 +322,6 @@ export function Heist() {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    // Size the canvas to fit the map
     canvas.width  = mapRenderer.pixelWidth
     canvas.height = mapRenderer.pixelHeight
 
@@ -297,7 +340,7 @@ export function Heist() {
       }
 
       mapRenderer.draw(ctx, state.doors)
-      entityLayer.draw(ctx, state, myPlayerId.value, playerRoleMap)
+      entityLayer.draw(ctx, state, myPlayerId.value, playerRoleMapRef.current)
 
       frameId = requestAnimationFrame(renderFrame)
     }
@@ -313,7 +356,7 @@ export function Heist() {
     function onKeyDown(e: KeyboardEvent) {
       const key = e.key as DirKey
       if (!(key in KEY_TO_DELTA)) return
-      if (pressed.has(key)) return   // avoid repeat bursts
+      if (pressed.has(key)) return
       e.preventDefault()
       pressed.add(key)
 
@@ -333,6 +376,44 @@ export function Heist() {
     }
   }, [])
 
+  // ── Canvas click — targeting mode for security abilities ──────────────────
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !isSecurity) return
+
+    function onCanvasClick(e: MouseEvent) {
+      const rect = canvas!.getBoundingClientRect()
+      const px   = e.clientX - rect.left
+      const py   = e.clientY - rect.top
+      // Convert pixel → tile coords
+      const tx = Math.floor(px / TILE)
+      const ty = Math.floor(py / TILE)
+
+      const state = currentGameState.value
+
+      if (targeting === 'lock_door' && state) {
+        // Find nearest door to clicked tile
+        let nearest = state.doors[0]
+        let bestDist = Infinity
+        for (const door of state.doors) {
+          const d = Math.abs(door.x - tx) + Math.abs(door.y - ty)
+          if (d < bestDist) { bestDist = d; nearest = door }
+        }
+        if (nearest && bestDist <= 2) {
+          connection.send({ type: 'security_action', action: 'lock_door', targetId: nearest.id })
+          const CD = 60
+          cooldownsRef.current = { ...cooldownsRef.current, lock_door: CD }
+          setTargeting(null)
+        }
+      } else if (targeting === 'release_guard') {
+        setWaypoints(prev => [...prev, { x: tx, y: ty }])
+      }
+    }
+
+    canvas.addEventListener('click', onCanvasClick)
+    return () => canvas.removeEventListener('click', onCanvasClick)
+  }, [targeting, isSecurity]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Cooldown tick-down ────────────────────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => {
@@ -340,27 +421,31 @@ export function Heist() {
       let changed = false
       const next: CooldownMap = { ...cd }
       for (const k of Object.keys(next) as (keyof CooldownMap)[]) {
-        if (next[k] > 0) {
-          next[k] = Math.max(0, next[k] - 1)
-          changed = true
-        }
+        if (next[k] > 0) { next[k] = Math.max(0, next[k] - 1); changed = true }
       }
       if (changed) cooldownsRef.current = next
-    }, 50) // ~50ms matches TICK_MS
+    }, 50)
     return () => clearInterval(id)
   }, [])
 
-  const wrapStyle = {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    height: '100vh',
-    background: BG,
-    overflow: 'hidden',
-    fontFamily: "'VT323', monospace",
+  function handleSendGuard() {
+    if (waypoints.length === 0) return
+    connection.send({ type: 'security_action', action: 'release_guard', patrolPath: waypoints })
+    setWaypoints([])
+    setTargeting(null)
   }
 
+  const cursorStyle = targeting ? 'cell' : 'crosshair'
+
   return (
-    <div style={wrapStyle}>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column' as const,
+      height: '100vh',
+      background: BG,
+      overflow: 'hidden',
+      fontFamily: "'VT323', monospace",
+    }}>
       {/* Canvas area with HUD overlay */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <canvas
@@ -369,7 +454,7 @@ export function Heist() {
           style={{
             display: 'block',
             imageRendering: 'pixelated' as const,
-            cursor: 'crosshair',
+            cursor: cursorStyle,
           }}
           tabIndex={0}
         />
@@ -381,6 +466,10 @@ export function Heist() {
         <SecurityToolbar
           cooldowns={cooldownsRef.current}
           setCooldowns={(c) => { cooldownsRef.current = c }}
+          targeting={targeting}
+          setTargeting={(t) => { setTargeting(t); if (t !== 'release_guard') setWaypoints([]) }}
+          waypoints={waypoints}
+          onSendGuard={handleSendGuard}
         />
       )}
     </div>

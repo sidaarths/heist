@@ -15,9 +15,9 @@ function clamp(value: number, min: number, max: number): number {
  * Returns TileType.Wall if out-of-bounds or no tile data available for that room.
  */
 function getTileAt(map: MapDef, x: number, y: number): TileType {
-  // Clamp to integer tile coordinates
-  const tx = Math.round(x)
-  const ty = Math.round(y)
+  // Floor to integer tile coordinates (floor = correct tile boundary)
+  const tx = Math.floor(x)
+  const ty = Math.floor(y)
 
   for (const room of map.rooms) {
     if (
