@@ -223,10 +223,11 @@ export function Lobby() {
           {/* Room header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
             <span style={{ ...label, marginBottom: 0 }}>◈ JOB CODE</span>
-            <span style={{ ...label, marginBottom: 0 }}>{room.players.length}/5 AGENTS</span>
+            <span data-testid="player-count" style={{ ...label, marginBottom: 0 }}>{room.players.length}/5 AGENTS</span>
           </div>
 
           <div
+            data-testid="room-code"
             class="rcode"
             role="button"
             tabIndex={0}
@@ -264,6 +265,7 @@ export function Lobby() {
                     : `3px 3px 0 #002c3d`,
                   opacity: secTaken && me?.role !== 'security' ? 0.35 : 1,
                 }}
+                  data-testid="security-btn"
                   onClick={() => (!secTaken || me?.role === 'security') && handleSelectRole('security')}
                   disabled={secTaken && me?.role !== 'security'}
                 >
@@ -279,6 +281,7 @@ export function Lobby() {
                     ? `3px 3px 0 #5a0077, 0 0 14px rgba(191,0,255,.4)`
                     : `3px 3px 0 #2e0040`,
                 }}
+                  data-testid="thief-btn"
                   onClick={() => handleSelectRole('thief')}
                 >
                   {me?.role === 'thief' ? '▶ THIEF' : 'THIEF'}
@@ -288,7 +291,7 @@ export function Lobby() {
           )}
 
           {/* Ready button */}
-          <button class={`pbtn${me?.ready ? ' ready-glow' : ''}`} style={{
+          <button data-testid="ready-btn" class={`pbtn${me?.ready ? ' ready-glow' : ''}`} style={{
             width: '100%', padding: '14px',
             marginBottom: '24px',
             background: me?.ready ? G : canReady ? R : '#1a1a1a',
@@ -313,7 +316,7 @@ export function Lobby() {
           </div>
           <ul style={{ listStyle: 'none' }}>
             {room.players.map((p: PlayerInfo, i: number) => (
-              <li key={p.id} class="prow" style={{
+              <li key={p.id} data-testid="player-row" class="prow" style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 padding: '9px 6px',
                 borderBottom: `1px solid #101810`,
@@ -334,7 +337,7 @@ export function Lobby() {
                 )}>
                   {p.role.toUpperCase()}
                 </span>
-                {p.ready && <span style={badge(G, G)}> READY</span>}
+                {p.ready && <span data-testid="ready-badge" style={badge(G, G)}> READY</span>}
                 {!p.connected && <span style={badge('#ff8800', '#ff8800')}>OFFLINE</span>}
               </li>
             ))}
@@ -378,7 +381,7 @@ export function Lobby() {
 
         {/* Name input */}
         <label style={label}>◈ YOUR CALLSIGN</label>
-        <input class="pinput" style={{ ...inputStyle, marginBottom: '22px' }}
+        <input data-testid="callsign-input" class="pinput" style={{ ...inputStyle, marginBottom: '22px' }}
           type="text"
           placeholder="Enter callsign..."
           value={playerName}
@@ -395,6 +398,7 @@ export function Lobby() {
               fontWeight: 700, fontSize: '22px', letterSpacing: '1px',
               boxShadow: `4px 4px 0 #6b0000`,
             }}
+              data-testid="host-btn"
               onClick={handleCreateRoom}
               disabled={loading}
             >
@@ -407,6 +411,7 @@ export function Lobby() {
               border: `2px solid #1e3a1e`,
               boxShadow: `4px 4px 0 #0a130a`,
             }}
+              data-testid="join-btn"
               onClick={() => { clearError(); setJoinMode(true) }}
               disabled={loading}
             >
@@ -417,7 +422,7 @@ export function Lobby() {
           /* Join panel */
           <div class="join-expand">
             <label style={label}>◈ JOB CODE</label>
-            <input class="pinput" style={{
+            <input data-testid="join-code-input" class="pinput" style={{
               ...inputStyle,
               fontFamily: "'Press Start 2P', monospace",
               fontSize: '16px', letterSpacing: '0.35em',
@@ -450,6 +455,7 @@ export function Lobby() {
                 fontWeight: 700, fontSize: '22px', letterSpacing: '1px',
                 boxShadow: `4px 4px 0 #6b0000`,
               }}
+                data-testid="crack-in-btn"
                 onClick={handleJoinRoom}
                 disabled={loading}
               >

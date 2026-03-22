@@ -103,7 +103,7 @@ function ChatPanel() {
       </div>
 
       {/* Message list */}
-      <div style={{
+      <div data-testid="chat-messages" style={{
         flex: 1, overflowY: 'auto', padding: '8px 10px',
         display: 'flex', flexDirection: 'column', gap: '4px',
       }}>
@@ -126,6 +126,7 @@ function ChatPanel() {
       {isThief && (
         <div style={{ padding: '8px', borderTop: `1px solid #1a2a1a`, display: 'flex', gap: '6px' }}>
           <input
+            data-testid="chat-input"
             style={{
               flex: 1, background: '#08080f', border: `1px solid #2a3a2a`,
               color: T, padding: '6px 10px', fontSize: '18px',
@@ -198,7 +199,9 @@ export function Planning() {
           textShadow: urgent ? `0 0 18px ${R}` : `0 0 12px ${G}`,
           transition: 'color .3s, text-shadow .3s',
           letterSpacing: '4px',
-        }}>
+        }}
+          data-testid="planning-countdown"
+        >
           {mins}:{secPad}
         </div>
 
@@ -216,7 +219,7 @@ export function Planning() {
       }}>
 
         {/* Map panel */}
-        <div style={{ position: 'relative', overflow: 'hidden', padding: '20px' }}>
+        <div data-testid="map-panel" style={{ position: 'relative', overflow: 'hidden', padding: '20px' }}>
           {/* Role instruction overlay for thieves */}
           {isThief && (
             <div style={{
@@ -243,7 +246,7 @@ export function Planning() {
 
         {/* Chat panel — thieves only (security sees empty space) */}
         {isThief && (
-          <div style={{ borderLeft: `1px solid #1a2a1a`, overflow: 'hidden' }}>
+          <div data-testid="chat-panel" style={{ borderLeft: `1px solid #1a2a1a`, overflow: 'hidden' }}>
             <ChatPanel />
           </div>
         )}
