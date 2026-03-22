@@ -2,8 +2,5 @@
   "buildCommand": "cd packages/client && bun run build",
   "outputDirectory": "packages/client/dist",
   "installCommand": "bun install",
-  "framework": null,
-  "env": {
-    "VITE_WS_URL": "wss://heist-server.fly.dev/ws"
-  }
+  "framework": null
 }

@@ -26,7 +26,7 @@ jobs:
 
   deploy-server:
     needs: test
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix-deploy') && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
