@@ -80,6 +80,61 @@ Lobby → Planning (60s) → Heist (5min) → Resolution → Replay
 
 ---
 
+## Aesthetic & Visual Design
+
+### Vibe
+Fast, chaotic, and social. Games should last 5–8 minutes total. The experience should feel like you're inside a heist movie — thieves frantically whispering plans in chat while Security is methodically closing off escape routes. The post-game replay is the punchline: thieves finally see how close Security was, or how badly Security misread their plan.
+
+### Visual Identity: Retro Terminal / CRT Hacker
+The entire UI is styled as a glitching, retro terminal interface. Every screen should feel like you're operating a system that barely holds together under pressure.
+
+| Layer | Choice | Rationale |
+|-------|--------|-----------|
+| Background | `#0a0a0f` near-black with slight blue tint | Deep space / dead monitor |
+| Primary text | `#c8ffc8` phosphor green | Classic CRT terminal |
+| Accent / danger | `#ff4444` red pulse | Alarm states, lockdown |
+| Accent / safe | `#44ff44` bright green pulse | Ready, success states |
+| Scanlines | `repeating-linear-gradient` overlay on `body::after` | Authentic CRT texture |
+| Title font | **Press Start 2P** (Google Fonts) | 8-bit pixel aesthetic |
+| Body font | **VT323** (Google Fonts) | Monospace terminal readout |
+
+### Animations
+| Animation | Usage | Description |
+|-----------|-------|-------------|
+| `glitch` | Title "HEIST" | Horizontal translate + hue-rotate flicker, random skew |
+| `blink` | Cursor, status text | 1s step-end infinite on `opacity` |
+| `fadeUp` | Panels, forms | Slide up 20px + fade in on mount |
+| `redPulse` | Room code display | box-shadow pulses red-to-transparent |
+| `greenPulse` | Ready indicator | box-shadow pulses green-to-transparent |
+| `rowIn` | Player list rows | Stagger slide-in left per row |
+| `joinExpand` | Join code panel | max-height expand from 0 |
+
+### UI Components
+| Component | Style |
+|-----------|-------|
+| Buttons `.pbtn` | 2px solid green border, `::after` pseudo-element creates 3px pixel shadow; shifts on `:active` |
+| Inputs `.pinput` | Green border, dark bg, phosphor green text, blink cursor |
+| Room code `.rcode` | Red pulsing border, uppercase monospace, `role="button"` click-to-copy |
+| Player rows `.prow` | Full-width with role badge coloured by role, staggered row-in animation |
+| Error messages | Red `#ff4444`, blink animation |
+| Loading / status | Blink animation on ellipsis or status text |
+
+### Screen-by-Screen Aesthetic Goals
+- **Lobby:** Terminal boot sequence feel. Title glitches on loop. Two primary actions (HOST / JOIN) as large pixel buttons. Join code panel expands inline rather than navigating away.
+- **Planning:** Split screen. Left = blurred/greyed map with scanline overlay. Right = scrolling chat terminal. Countdown timer in large VT323 type, turns red under 10s.
+- **Heist (Thief):** Dark canvas. Only lit circle around player. Chat sidebar collapsed by default. Interaction prompts appear as terminal pop-ups. Progress bars styled as ASCII fill.
+- **Heist (Security):** Full map canvas. Red camera FOV wedges. Toolbar at bottom with cooldown bars as pixel progress. Alarm trigger button pulses red.
+- **Resolution:** Full-screen winner announcement. "MISSION ACCOMPLISHED" (green) or "ACCESS DENIED — LOCKDOWN COMPLETE" (red). Pixel confetti or glitch effect.
+- **Replay:** Overhead map, ghost trails per player in distinct colours, event callout labels pop in terminal-style boxes.
+
+### Sound (Future)
+- Chiptune / lo-fi beeps for interactions
+- Low alarm buzz when lockdown triggered
+- Door lock clunk sound effect
+- Chat message blip (thieves only)
+
+---
+
 ## Key Design Rules
 
 1. Security has power but limited actions per cooldown — cannot lock every door at once, must prioritize
