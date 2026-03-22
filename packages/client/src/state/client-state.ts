@@ -10,7 +10,6 @@ export const myPlayerName = signal<string>('')
 
 // Room state
 export const currentRoom = signal<GameRoom | null>(null)
-export const currentRoomId = computed<string | null>(() => currentRoom.value?.id ?? null)
 
 // Derived state
 export const myPlayer = computed<PlayerInfo | null>(() => {
@@ -20,22 +19,7 @@ export const myPlayer = computed<PlayerInfo | null>(() => {
   return room.players.find((p: PlayerInfo) => p.id === id) ?? null
 })
 
-export const isHost = computed<boolean>(() => {
-  const room = currentRoom.value
-  const id = myPlayerId.value
-  return room?.hostId === id
-})
-
-export const canStartGame = computed<boolean>(() => {
-  const room = currentRoom.value
-  if (!room) return false
-  const allReady = room.players.every((p: PlayerInfo) => p.ready)
-  const hasSecurity = room.players.some((p: PlayerInfo) => p.role === 'security')
-  const hasEnoughPlayers = room.players.length >= 3
-  return allReady && hasSecurity && hasEnoughPlayers
-})
-
-export const securityPlayer = computed<PlayerInfo | null>(() => {
+const securityPlayer = computed<PlayerInfo | null>(() => {
   const room = currentRoom.value
   return room?.players.find((p: PlayerInfo) => p.role === 'security') ?? null
 })

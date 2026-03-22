@@ -6,8 +6,14 @@ import type { ServerWebSocket } from 'bun'
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
-  .split(',')
-  .map(s => s.trim())
+  .split(',').map(s => s.trim())
+
+function isOriginAllowed(origin: string): boolean {
+  return ALLOWED_ORIGINS.some(pattern => {
+    if (pattern.startsWith('*')) return origin.endsWith(pattern.slice(1))
+    return pattern === origin
+  })
+}
 
 const manager = new RoomManager()
 const socketHandler = new SocketHandler(manager)
@@ -22,7 +28,7 @@ app.get('/health', (c) => c.json({ status: 'ok', uptime: process.uptime() }))
 // Upgrade HTTP connections to WebSocket
 app.get('/ws', (c) => {
   const origin = c.req.header('origin') ?? ''
-  if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
+  if (origin && !isOriginAllowed(origin)) {
     return c.text('Forbidden', 403)
   }
 
@@ -49,7 +55,7 @@ const server = Bun.serve<SocketData>({
     // Handle WebSocket upgrade
     if (url.pathname === '/ws') {
       const origin = req.headers.get('origin') ?? ''
-      if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
+      if (origin && !isOriginAllowed(origin)) {
         return new Response('Forbidden', { status: 403 })
       }
 

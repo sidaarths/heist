@@ -3,14 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Heist</title>
+    <title>HEIST</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body {
-        font-family: 'Segoe UI', system-ui, sans-serif;
-        background: #0f0f0f;
-        color: #e0e0e0;
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        background: #0a0a0f;
+        color: #c8ffc8;
+        font-family: 'VT323', 'Courier New', monospace;
+        font-size: 20px;
         min-height: 100vh;
+      }
+      /* CRT scanlines */
+      body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg, transparent, transparent 2px,
+          rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px
+        );
+        pointer-events: none;
+        z-index: 9999;
       }
     </style>
   </head>

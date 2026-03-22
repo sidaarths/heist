@@ -3,14 +3,16 @@ import { wsConnected } from '../state/client-state'
 
 type MessageHandler = (msg: ServerMessage) => void
 
+// import.meta.env.VITE_WS_URL is substituted by Vite at build time
+// Falls back to same host (for local dev with a proxy) if not set
 const WS_URL =
-  (import.meta as unknown as { env: Record<string, string> }).env?.VITE_WS_URL ||
+  import.meta.env.VITE_WS_URL ||
   `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
 const MAX_RETRIES = 5
 const BASE_BACKOFF_MS = 500
 
-export class Connection {
+class Connection {
   private ws: WebSocket | null = null
   private handlers: Set<MessageHandler> = new Set()
   private retryCount = 0
