@@ -166,6 +166,53 @@ describe('SocketHandler', () => {
     })
   })
 
+  describe('broadcastToThieves (via chat)', () => {
+    /** Build a full 2-player planning room and return the contexts. */
+    function setupPlanningRoom() {
+      const sec = makeWs('sec')
+      const thief = makeWs('thief')
+      handler.open(sec.ws)
+      handler.open(thief.ws)
+
+      handler.message(sec.ws, JSON.stringify({ type: 'create_room', playerName: 'Security' }))
+      const created = sec.sent.find(m => m.type === 'room_created') as any
+      const roomId = created.roomId
+
+      handler.message(thief.ws, JSON.stringify({ type: 'join_room', roomId, playerName: 'ThiefPlayer' }))
+      handler.message(sec.ws, JSON.stringify({ type: 'select_role', role: 'security' }))
+      handler.message(thief.ws, JSON.stringify({ type: 'select_role', role: 'thief' }))
+      handler.message(sec.ws, JSON.stringify({ type: 'set_ready', ready: true }))
+      handler.message(thief.ws, JSON.stringify({ type: 'set_ready', ready: true }))
+      handler.message(sec.ws, JSON.stringify({ type: 'start_game' }))
+
+      sec.sent.length = 0
+      thief.sent.length = 0
+
+      return { sec, thief, roomId }
+    }
+
+    it('chat from thief is delivered to thief but not to security', () => {
+      const { sec, thief } = setupPlanningRoom()
+
+      handler.message(thief.ws, JSON.stringify({ type: 'chat', message: 'vault left' }))
+
+      const thiefReceived = thief.sent.some(m => m.type === 'chat_message')
+      const secReceived = sec.sent.some(m => m.type === 'chat_message')
+
+      expect(thiefReceived).toBe(true)
+      expect(secReceived).toBe(false)
+    })
+
+    it('security chat is rejected with CHAT_DENIED', () => {
+      const { sec } = setupPlanningRoom()
+
+      handler.message(sec.ws, JSON.stringify({ type: 'chat', message: 'I see you' }))
+
+      const denied = sec.sent.find(m => m.type === 'error' && (m as any).code === 'CHAT_DENIED')
+      expect(denied).toBeDefined()
+    })
+  })
+
   describe('disconnect handling', () => {
     it('remaining players receive updated room_state when a player disconnects', () => {
       const p1 = makeWs('p1')
