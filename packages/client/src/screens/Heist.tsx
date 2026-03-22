@@ -20,9 +20,32 @@ import {
   myPlayerId,
   myPlayer,
 } from '../state/client-state'
-import { BASIC_MAP, TICK_MS, TICK_RATE } from '@heist/shared'
+import {
+  BASIC_MAP, TICK_MS, TICK_RATE,
+  PICK_LOCK_TICKS, DESTROY_CAMERA_TICKS, DISABLE_ALARM_TICKS,
+} from '@heist/shared'
 import { MapRenderer, TILE } from '../canvas/MapRenderer'
-import { EntityLayer } from '../canvas/EntityLayer'
+import { EntityLayer, type InteractionProgress } from '../canvas/EntityLayer'
+
+function actionDurationMs(action: string): number {
+  switch (action) {
+    case 'pick_lock':      return (PICK_LOCK_TICKS      / TICK_RATE) * 1000
+    case 'destroy_camera': return (DESTROY_CAMERA_TICKS / TICK_RATE) * 1000
+    case 'disable_alarm':  return (DISABLE_ALARM_TICKS  / TICK_RATE) * 1000
+    default: return 0
+  }
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  pick_lock:      'PICKING LOCK',
+  destroy_camera: 'DESTROYING CAM',
+  disable_alarm:  'DISABLING ALARM',
+}
+const ACTION_COLORS: Record<string, string> = {
+  pick_lock:      '#bf00ff',
+  destroy_camera: '#ff4444',
+  disable_alarm:  '#ffaa00',
+}
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const R   = '#ff003c'
@@ -287,10 +310,11 @@ function SecurityPanel({
 }
 
 // ─── HUD overlay (thief only) ─────────────────────────────────────────────────
-function ThiefHud({ gs, myId, lightsOut }: {
+function ThiefHud({ gs, myId, lightsOut, interactionBar }: {
   gs: GameState | null
   myId: string | null
   lightsOut: boolean
+  interactionBar: { action: string; progress: number } | null
 }) {
   const myPos     = gs?.playerPositions.find(p => p.playerId === myId)
   const lootCount = myPos?.lootCarried.length ?? 0
@@ -357,6 +381,52 @@ function ThiefHud({ gs, myId, lightsOut }: {
           }}>
             {lockSecs}s
           </span>
+        </div>
+      )}
+
+      {/* Interaction progress bar */}
+      {interactionBar && (
+        <div style={{
+          position: 'absolute', bottom: 32, left: '50%',
+          transform: 'translateX(-50%)',
+          width: '260px',
+          pointerEvents: 'none', zIndex: 15,
+        }}>
+          <div style={{
+            fontFamily: "'VT323', monospace",
+            fontSize: '15px',
+            color: ACTION_COLORS[interactionBar.action] ?? '#fff',
+            textAlign: 'center',
+            letterSpacing: '2px',
+            marginBottom: '4px',
+            textShadow: `0 0 8px ${ACTION_COLORS[interactionBar.action] ?? '#fff'}`,
+          }}>
+            {ACTION_LABELS[interactionBar.action] ?? interactionBar.action.toUpperCase()}...
+          </div>
+          {/* Bar track */}
+          <div style={{
+            background: 'rgba(0,0,0,0.6)',
+            border: `1px solid ${ACTION_COLORS[interactionBar.action] ?? '#fff'}44`,
+            height: '8px',
+            borderRadius: '4px',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${interactionBar.progress * 100}%`,
+              background: ACTION_COLORS[interactionBar.action] ?? '#fff',
+              boxShadow: `0 0 8px ${ACTION_COLORS[interactionBar.action] ?? '#fff'}`,
+              transition: 'width 50ms linear',
+              borderRadius: '4px',
+            }} />
+          </div>
+          <div style={{
+            fontFamily: "'VT323', monospace",
+            fontSize: '12px', color: '#556',
+            textAlign: 'center', marginTop: '2px',
+          }}>
+            HOLD STILL
+          </div>
         </div>
       )}
 
@@ -435,6 +505,17 @@ export function Heist() {
   // Force toolbar re-render when cooldowns change
   const [, forceUpdate] = useState(0)
 
+  // Active thief interaction (for progress ring + HUD bar)
+  const interactionRef = useRef<{
+    action: 'pick_lock' | 'destroy_camera' | 'disable_alarm'
+    targetId: string
+    startMs: number
+    durationMs: number
+  } | null>(null)
+  const [interactionBar, setInteractionBar] = useState<{
+    action: string; progress: number
+  } | null>(null)
+
   // Targeting state for security abilities
   const [targeting, setTargeting] = useState<TargetingAction>(null)
   const [waypoints, setWaypoints] = useState<Array<{ x: number; y: number }>>([])
@@ -475,7 +556,16 @@ export function Heist() {
       }
 
       mapRenderer.draw(ctx, state.doors)
-      entityLayer.draw(ctx, state, myPlayerId.value, playerRoleMapRef.current, waypointsRef.current)
+
+      // Compute current interaction progress for canvas ring
+      let interactionProgress: InteractionProgress | null = null
+      const inter = interactionRef.current
+      if (inter && myPlayerId.value) {
+        const progress = Math.min(1, (Date.now() - inter.startMs) / inter.durationMs)
+        interactionProgress = { playerId: myPlayerId.value, action: inter.action, progress }
+      }
+
+      entityLayer.draw(ctx, state, myPlayerId.value, playerRoleMapRef.current, waypointsRef.current, interactionProgress)
 
       // Lights-out fog for thieves
       if (state.lightsOut && !isSecurity) {
@@ -499,6 +589,10 @@ export function Heist() {
       if (DIR_KEYS.has(e.key)) {
         e.preventDefault()
         pressed.add(e.key)
+        // Moving cancels any active interaction
+        if (interactionRef.current) {
+          interactionRef.current = null
+        }
       }
     }
     function onKeyUp(e: KeyboardEvent) { pressed.delete(e.key) }
@@ -562,31 +656,43 @@ export function Heist() {
         const nearby = (ox: number, oy: number) =>
           Math.abs(ox - tx) <= RANGE && Math.abs(oy - ty) <= RANGE
 
-        // Loot (highest priority)
+        // Loot (highest priority — instant)
         for (const item of state.loot) {
           if (!item.carried && nearby(item.x, item.y)) {
             connection.send({ type: 'player_action', action: 'take_loot', targetId: item.id })
             return
           }
         }
+        // Timed interactions
+        function startTimed(
+          action: 'pick_lock' | 'destroy_camera' | 'disable_alarm',
+          targetId: string,
+        ) {
+          connection.send({ type: 'player_action', action, targetId })
+          interactionRef.current = {
+            action, targetId,
+            startMs: Date.now(),
+            durationMs: actionDurationMs(action),
+          }
+        }
         // Locked door → pick lock
         for (const door of state.doors) {
           if (door.locked && nearby(door.x, door.y)) {
-            connection.send({ type: 'player_action', action: 'pick_lock', targetId: door.id })
+            startTimed('pick_lock', door.id)
             return
           }
         }
         // Camera → destroy
         for (const cam of state.cameras) {
           if (!cam.destroyed && nearby(cam.x, cam.y)) {
-            connection.send({ type: 'player_action', action: 'destroy_camera', targetId: cam.id })
+            startTimed('destroy_camera', cam.id)
             return
           }
         }
         // Alarm panel → disable
         for (const panel of state.alarmPanels) {
           if (!panel.disabled && nearby(panel.x, panel.y)) {
-            connection.send({ type: 'player_action', action: 'disable_alarm', targetId: panel.id })
+            startTimed('disable_alarm', panel.id)
             return
           }
         }
@@ -596,6 +702,18 @@ export function Heist() {
     canvas.addEventListener('click', onClick)
     return () => canvas.removeEventListener('click', onClick)
   }, [isSecurity]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Interaction progress bar (HUD div update) ────────────────────────────
+  useEffect(() => {
+    const id = setInterval(() => {
+      const inter = interactionRef.current
+      if (!inter) { setInteractionBar(null); return }
+      const progress = Math.min(1, (Date.now() - inter.startMs) / inter.durationMs)
+      setInteractionBar({ action: inter.action, progress })
+      if (progress >= 1) interactionRef.current = null
+    }, 50)
+    return () => clearInterval(id)
+  }, [])
 
   // ── Cooldown tick-down ────────────────────────────────────────────────────
   useEffect(() => {
@@ -674,7 +792,7 @@ export function Heist() {
         }}
         tabIndex={0}
       />
-      <ThiefHud gs={gs} myId={myId} lightsOut={gs?.lightsOut ?? false} />
+      <ThiefHud gs={gs} myId={myId} lightsOut={gs?.lightsOut ?? false} interactionBar={interactionBar} />
     </div>
   )
 }

@@ -68,10 +68,10 @@ describe('GameEngine', () => {
       expect(state.tick).toBe(1)
     })
 
-    it('wraps guard patrol index back to 0 after reaching end of path', () => {
+    it('despawns guard after completing full patrol path', () => {
       const room = makeRoom()
       const state = initGameState(room, BASIC_MAP)
-      // Guard is already at last waypoint
+      // Guard is already at its last waypoint (patrolIndex = 1, path length = 2)
       state.guards.push({
         id: 'g1',
         x: 10,
@@ -83,10 +83,10 @@ describe('GameEngine', () => {
       state.room.phase = 'heist'
 
       const engine = new GameEngine(state, BASIC_MAP)
-      // Guard is already at its current waypoint — one tick snaps and wraps index to 0
       engine.advanceTick()
 
-      expect(state.guards[0].patrolIndex).toBe(0)
+      // Guard completes patrol and is removed
+      expect(state.guards.length).toBe(0)
     })
   })
 

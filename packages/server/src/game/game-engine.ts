@@ -142,8 +142,13 @@ export class GameEngine {
   }
 
   private advanceGuards(): void {
+    const toRemove: string[] = []
+
     for (const guard of this.state.guards) {
-      if (guard.patrolPath.length < 2) continue
+      if (guard.patrolPath.length < 2) {
+        toRemove.push(guard.id)
+        continue
+      }
 
       const target = guard.patrolPath[guard.patrolIndex]
       const dx = target.x - guard.x
@@ -151,15 +156,24 @@ export class GameEngine {
       const dist = Math.sqrt(dx * dx + dy * dy)
 
       if (dist <= BASE_MOVE_SPEED) {
-        // Reached waypoint — snap to it and advance index
+        // Reached waypoint — snap and advance
         guard.x = target.x
         guard.y = target.y
-        guard.patrolIndex = (guard.patrolIndex + 1) % guard.patrolPath.length
+        const nextIndex = guard.patrolIndex + 1
+        if (nextIndex >= guard.patrolPath.length) {
+          // Completed full patrol — despawn
+          toRemove.push(guard.id)
+        } else {
+          guard.patrolIndex = nextIndex
+        }
       } else {
-        // Move toward waypoint
         guard.x += (dx / dist) * BASE_MOVE_SPEED
         guard.y += (dy / dist) * BASE_MOVE_SPEED
       }
+    }
+
+    if (toRemove.length > 0) {
+      this.state.guards = this.state.guards.filter(g => !toRemove.includes(g.id))
     }
   }
 }

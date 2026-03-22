@@ -1,12 +1,14 @@
 import { randomUUID } from 'crypto'
-import type { GameRoom, GameState, LootItem, AlarmPanel, Camera, ExitPoint, PlayerPosition } from '@heist/shared'
-import type { MapDef } from '@heist/shared'
+import type {
+  GameRoom, GameState, LootItem, AlarmPanel, Camera, Door,
+  ExitPoint, PlayerPosition,
+} from '@heist/shared'
+import type { MapDef, MapRoom } from '@heist/shared'
 import {
   LOOT_COUNT_MIN,
   LOOT_COUNT_MAX,
   ALARM_PANEL_COUNT_MIN,
   ALARM_PANEL_COUNT_MAX,
-  BASE_MOVE_SPEED,
   LOCKDOWN_DURATION_MS,
   TICK_MS,
 } from '@heist/shared'
@@ -15,28 +17,34 @@ function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-function pickUniqueTiles(
+/**
+ * Pick random floor tiles from within the specified rooms,
+ * avoiding already-occupied positions.
+ */
+function pickFloorTiles(
+  rooms: MapRoom[],
+  roomIds: string[],
   count: number,
-  mapWidth: number,
-  mapHeight: number,
-  occupied: Set<string>
+  occupied: Set<string>,
 ): Array<{ x: number; y: number }> {
-  const tiles: Array<{ x: number; y: number }> = []
-  let attempts = 0
-  const maxAttempts = count * 100
-
-  while (tiles.length < count && attempts < maxAttempts) {
-    attempts++
-    const x = randInt(0, mapWidth - 1)
-    const y = randInt(0, mapHeight - 1)
-    const key = `${x},${y}`
-    if (!occupied.has(key)) {
-      occupied.add(key)
-      tiles.push({ x, y })
+  const candidates: Array<{ x: number; y: number }> = []
+  for (const room of rooms) {
+    if (!roomIds.includes(room.id)) continue
+    for (let y = room.y; y < room.y + room.height; y++) {
+      for (let x = room.x; x < room.x + room.width; x++) {
+        const key = `${x},${y}`
+        if (!occupied.has(key)) candidates.push({ x, y })
+      }
     }
   }
-
-  return tiles
+  // Fisher-Yates shuffle
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[candidates[i], candidates[j]] = [candidates[j], candidates[i]]
+  }
+  const picked = candidates.slice(0, Math.min(count, candidates.length))
+  for (const t of picked) occupied.add(`${t.x},${t.y}`)
+  return picked
 }
 
 export function initGameState(room: GameRoom, map: MapDef): GameState {
@@ -44,15 +52,36 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
 
   // Reserve spawn points
   for (const sp of map.spawnPoints.security) occupied.add(`${sp.x},${sp.y}`)
-  for (const sp of map.spawnPoints.thieves) occupied.add(`${sp.x},${sp.y}`)
+  for (const sp of map.spawnPoints.thieves)  occupied.add(`${sp.x},${sp.y}`)
 
-  // Place exit
-  const [exitTile] = pickUniqueTiles(1, map.width, map.height, occupied)
-  const exit: ExitPoint = exitTile
+  // Fixed exit from map definition
+  const exit: ExitPoint = { ...map.exitPosition }
+  occupied.add(`${exit.x},${exit.y}`)
 
-  // Place loot
+  // Fixed cameras from map definition
+  const cameras: Camera[] = map.cameraDefs.map(c => ({
+    id: c.id,
+    x: c.x,
+    y: c.y,
+    angle: c.angle,
+    fov: c.fov,
+    destroyed: false,
+  }))
+  for (const c of cameras) occupied.add(`${c.x},${c.y}`)
+
+  // Fixed doors from map definition
+  const doors: Door[] = map.doorDefs.map(d => ({
+    id: d.id,
+    x: d.x,
+    y: d.y,
+    locked: d.initiallyLocked,
+    open: !d.initiallyLocked,
+  }))
+  for (const d of doors) occupied.add(`${d.x},${d.y}`)
+
+  // Loot placed randomly within designated rooms only
   const lootCount = randInt(LOOT_COUNT_MIN, LOOT_COUNT_MAX)
-  const lootTiles = pickUniqueTiles(lootCount, map.width, map.height, occupied)
+  const lootTiles = pickFloorTiles(map.rooms, map.lootRoomIds, lootCount, occupied)
   const loot: LootItem[] = lootTiles.map(tile => ({
     id: randomUUID(),
     x: tile.x,
@@ -63,9 +92,9 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
     carriedBy: null,
   }))
 
-  // Place alarm panels
+  // Alarm panels placed randomly within designated rooms only
   const panelCount = randInt(ALARM_PANEL_COUNT_MIN, ALARM_PANEL_COUNT_MAX)
-  const panelTiles = pickUniqueTiles(panelCount, map.width, map.height, occupied)
+  const panelTiles = pickFloorTiles(map.rooms, map.alarmRoomIds, panelCount, occupied)
   const alarmPanels: AlarmPanel[] = panelTiles.map(tile => ({
     id: randomUUID(),
     x: tile.x,
@@ -74,30 +103,17 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
     triggered: false,
   }))
 
-  // Place cameras at fixed positions (from map definition) with randomised angles
-  const cameras: Camera[] = map.rooms.map((r, i) => ({
-    id: `cam-${i}`,
-    x: r.x + Math.floor(r.width / 2),
-    y: r.y + Math.floor(r.height / 2),
-    angle: Math.random() * 360,
-    fov: 90,
-    destroyed: false,
-  }))
-
-  // Assign player positions
-  const thieves = room.players.filter(p => p.role === 'thief')
+  // Player positions from spawn points
+  const thieves        = room.players.filter(p => p.role === 'thief')
   const securityPlayer = room.players.find(p => p.role === 'security')
-
   const playerPositions: PlayerPosition[] = []
 
   if (securityPlayer) {
     const sp = map.spawnPoints.security[0]
     playerPositions.push({
       playerId: securityPlayer.id,
-      x: sp.x,
-      y: sp.y,
-      frozen: false,
-      frozenTicksRemaining: 0,
+      x: sp.x, y: sp.y,
+      frozen: false, frozenTicksRemaining: 0,
       lootCarried: [],
     })
   }
@@ -106,10 +122,8 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
     const sp = map.spawnPoints.thieves[i % map.spawnPoints.thieves.length]
     playerPositions.push({
       playerId: thief.id,
-      x: sp.x,
-      y: sp.y,
-      frozen: false,
-      frozenTicksRemaining: 0,
+      x: sp.x, y: sp.y,
+      frozen: false, frozenTicksRemaining: 0,
       lootCarried: [],
     })
   })
@@ -119,7 +133,7 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
   return {
     room,
     loot,
-    doors: [],
+    doors,
     cameras,
     alarmPanels,
     guards: [],

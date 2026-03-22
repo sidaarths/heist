@@ -8,6 +8,13 @@
 import type { GameState } from '@heist/shared'
 import { TILE } from './MapRenderer'
 
+export interface InteractionProgress {
+  playerId: string
+  action: 'pick_lock' | 'destroy_camera' | 'disable_alarm'
+  /** 0..1 */
+  progress: number
+}
+
 const PLAYER_COLORS: Record<string, string> = {
   thief: '#bf00ff',
 }
@@ -38,13 +45,15 @@ export class EntityLayer {
     myPlayerId: string | null,
     playerRoleMap: Record<string, string>,
     waypoints?: Array<{ x: number; y: number }>,
+    interaction?: InteractionProgress | null,
   ): void {
     this.drawExit(ctx, gameState)
     this.drawAlarmPanels(ctx, gameState)
     this.drawLoot(ctx, gameState)
     this.drawCameras(ctx, gameState)
     this.drawGuards(ctx, gameState)
-    this.drawPlayers(ctx, gameState, myPlayerId, playerRoleMap)
+    this.drawInteractableHighlights(ctx, gameState, myPlayerId, playerRoleMap)
+    this.drawPlayers(ctx, gameState, myPlayerId, playerRoleMap, interaction)
     if (waypoints && waypoints.length > 0) {
       this.drawWaypoints(ctx, waypoints)
     }
@@ -214,11 +223,57 @@ export class EntityLayer {
     }
   }
 
+  private drawInteractableHighlights(
+    ctx: CanvasRenderingContext2D,
+    gs: GameState,
+    myPlayerId: string | null,
+    playerRoleMap: Record<string, string>,
+  ): void {
+    const myPos = gs.playerPositions.find(p => p.playerId === myPlayerId)
+    if (!myPos) return
+    if ((playerRoleMap[myPlayerId ?? ''] ?? 'thief') !== 'thief') return
+
+    const RANGE = 3
+    const nearby = (ox: number, oy: number) =>
+      Math.abs(ox - myPos.x) + Math.abs(oy - myPos.y) <= RANGE
+
+    ctx.save()
+    ctx.setLineDash([3, 3])
+    ctx.lineWidth = 1.5
+
+    for (const door of gs.doors) {
+      if (!door.locked || !nearby(door.x, door.y)) continue
+      ctx.strokeStyle = 'rgba(255,180,180,0.55)'
+      ctx.strokeRect(door.x * TILE + 2, door.y * TILE + 2, TILE - 4, TILE - 4)
+    }
+    for (const item of gs.loot) {
+      if (item.carried || !nearby(item.x, item.y)) continue
+      ctx.strokeStyle = 'rgba(255,230,80,0.55)'
+      ctx.beginPath()
+      ctx.arc(item.x * TILE + TILE / 2, item.y * TILE + TILE / 2, LOOT_HALF + 5, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    for (const cam of gs.cameras) {
+      if (cam.destroyed || !nearby(cam.x, cam.y)) continue
+      ctx.strokeStyle = 'rgba(80,255,160,0.45)'
+      ctx.strokeRect(cam.x * TILE + 1, cam.y * TILE + 1, TILE - 2, TILE - 2)
+    }
+    for (const panel of gs.alarmPanels) {
+      if (panel.disabled || !nearby(panel.x, panel.y)) continue
+      ctx.strokeStyle = 'rgba(255,180,60,0.55)'
+      ctx.strokeRect(panel.x * TILE + 1, panel.y * TILE + 1, TILE - 2, TILE - 2)
+    }
+
+    ctx.setLineDash([])
+    ctx.restore()
+  }
+
   private drawPlayers(
     ctx: CanvasRenderingContext2D,
     gs: GameState,
     myPlayerId: string | null,
     playerRoleMap: Record<string, string>,
+    interaction?: InteractionProgress | null,
   ): void {
     for (const pos of gs.playerPositions) {
       const role = playerRoleMap[pos.playerId] ?? 'thief'
@@ -281,6 +336,35 @@ export class EntityLayer {
           ctx.arc(cx - 6 + i * 6, cy - PLAYER_RADIUS - 9, 3, 0, Math.PI * 2)
           ctx.fill()
         }
+      }
+
+      // Interaction progress ring
+      if (interaction && interaction.playerId === pos.playerId && interaction.progress > 0) {
+        const ringR = PLAYER_RADIUS + 8
+        const sweepAngle = 2 * Math.PI * interaction.progress
+        const ringColors: Record<string, string> = {
+          pick_lock:      '#bf00ff',
+          destroy_camera: '#ff4444',
+          disable_alarm:  '#ffaa00',
+        }
+        const ringColor = ringColors[interaction.action] ?? '#ffffff'
+
+        ctx.shadowBlur = 0
+        // Track ring
+        ctx.beginPath()
+        ctx.arc(cx, cy, ringR, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+        ctx.lineWidth = 3
+        ctx.stroke()
+        // Progress arc
+        ctx.beginPath()
+        ctx.arc(cx, cy, ringR, -Math.PI / 2, -Math.PI / 2 + sweepAngle)
+        ctx.strokeStyle = ringColor
+        ctx.lineWidth = 3
+        ctx.shadowColor = ringColor
+        ctx.shadowBlur = 8
+        ctx.stroke()
+        ctx.shadowBlur = 0
       }
 
       ctx.restore()
