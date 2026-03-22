@@ -3,9 +3,7 @@
   "outputDirectory": "packages/client/dist",
   "installCommand": "bun install",
   "framework": null,
-  "build": {
-    "env": {
-      "VITE_WS_URL": "wss://heist-server.fly.dev"
-    }
+  "env": {
+    "VITE_WS_URL": "wss://heist-server.fly.dev"
   }
 }
