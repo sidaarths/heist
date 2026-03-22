@@ -4,7 +4,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "dev": "concurrently --names server,client --prefix-colors red,blue \"bun run --cwd packages/server src/index.ts\" \"bun run --cwd packages/client dev\"",
-    "test": "bun test",
+    "test": "bun test packages/server packages/shared",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
