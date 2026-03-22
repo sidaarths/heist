@@ -12,7 +12,7 @@ const WS_URL =
 const MAX_RETRIES = 5
 const BASE_BACKOFF_MS = 500
 
-export class Connection {
+class Connection {
   private ws: WebSocket | null = null
   private handlers: Set<MessageHandler> = new Set()
   private retryCount = 0
