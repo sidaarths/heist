@@ -132,6 +132,7 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
 
   return {
     room,
+    mapId: map.id,
     loot,
     doors,
     cameras,

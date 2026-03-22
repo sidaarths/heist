@@ -258,10 +258,13 @@ export class EntityLayer {
       ctx.strokeStyle = 'rgba(80,255,160,0.45)'
       ctx.strokeRect(cam.x * TILE + 1, cam.y * TILE + 1, TILE - 2, TILE - 2)
     }
-    for (const panel of gs.alarmPanels) {
-      if (panel.disabled || !nearby(panel.x, panel.y)) continue
-      ctx.strokeStyle = 'rgba(255,180,60,0.55)'
-      ctx.strokeRect(panel.x * TILE + 1, panel.y * TILE + 1, TILE - 2, TILE - 2)
+    // Alarm panels only glow when alarm is active (and player can disable them)
+    if (gs.alarmTriggered) {
+      for (const panel of gs.alarmPanels) {
+        if (panel.disabled || !nearby(panel.x, panel.y)) continue
+        ctx.strokeStyle = 'rgba(255,80,80,0.7)'
+        ctx.strokeRect(panel.x * TILE + 1, panel.y * TILE + 1, TILE - 2, TILE - 2)
+      }
     }
 
     ctx.setLineDash([])

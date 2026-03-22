@@ -5,7 +5,8 @@ import {
   planningSecondsRemaining, chatMessages,
   currentGameState,
 } from '../state/client-state'
-import { BASIC_MAP, CHAT_MESSAGE_MAX_LEN } from '@heist/shared'
+import { MAPS, CHAT_MESSAGE_MAX_LEN } from '@heist/shared'
+import type { MapDef } from '@heist/shared'
 
 // ─── Design tokens (match Lobby) ──────────────────────────────────────────────
 const R   = '#ff003c'
@@ -18,8 +19,7 @@ const BG  = '#0a0a0f'
 const CARD = '#0c0c16'
 
 // ─── Map overview (SVG room outlines) ─────────────────────────────────────────
-function MapOverview({ blurred }: { blurred: boolean }) {
-  const map = BASIC_MAP
+function MapOverview({ blurred, map }: { blurred: boolean; map: MapDef }) {
   const SCALE = 8 // pixels per tile
 
   return (
@@ -49,7 +49,32 @@ function MapOverview({ blurred }: { blurred: boolean }) {
         />
       ))}
 
-      {/* Spawn labels */}
+      {/* Door markers */}
+      {map.doorDefs.map(d => (
+        <rect
+          key={d.id}
+          x={d.x * SCALE + 1}
+          y={d.y * SCALE + 1}
+          width={SCALE - 2}
+          height={SCALE - 2}
+          fill={d.initiallyLocked ? 'rgba(180,0,0,0.7)' : 'rgba(0,100,0,0.6)'}
+          stroke={d.initiallyLocked ? '#cc2200' : '#228822'}
+          stroke-width="1"
+        />
+      ))}
+
+      {/* Exit marker */}
+      <rect
+        x={map.exitPosition.x * SCALE}
+        y={map.exitPosition.y * SCALE}
+        width={SCALE}
+        height={SCALE}
+        fill="rgba(0,255,136,0.25)"
+        stroke="#00ff88"
+        stroke-width="1.5"
+      />
+
+      {/* Thief spawn points */}
       {map.spawnPoints.thieves.map((sp, i) => (
         <circle
           key={`ts${i}`}
@@ -57,16 +82,21 @@ function MapOverview({ blurred }: { blurred: boolean }) {
           cy={sp.y * SCALE + SCALE / 2}
           r={3}
           fill={P}
-          opacity="0.7"
+          opacity="0.8"
         />
       ))}
-      <circle
-        cx={map.spawnPoints.security[0].x * SCALE + SCALE / 2}
-        cy={map.spawnPoints.security[0].y * SCALE + SCALE / 2}
-        r={3}
-        fill={B}
-        opacity="0.7"
-      />
+
+      {/* Security spawn */}
+      {map.spawnPoints.security.map((sp, i) => (
+        <circle
+          key={`ss${i}`}
+          cx={sp.x * SCALE + SCALE / 2}
+          cy={sp.y * SCALE + SCALE / 2}
+          r={3}
+          fill={B}
+          opacity="0.8"
+        />
+      ))}
     </svg>
   )
 }
@@ -163,6 +193,8 @@ export function Planning() {
   const secs     = planningSecondsRemaining.value
   const isThief  = me?.role === 'thief'
   const isSec    = me?.role === 'security'
+  const gs       = currentGameState.value
+  const activeMap = MAPS.find(m => m.id === gs?.mapId) ?? MAPS[0]
 
   const mins    = Math.floor(secs / 60)
   const secPad  = String(secs % 60).padStart(2, '0')
@@ -241,7 +273,7 @@ export function Planning() {
               </div>
             </div>
           )}
-          <MapOverview blurred={isThief} />
+          <MapOverview blurred={isThief} map={activeMap} />
         </div>
 
         {/* Chat panel — thieves only (security sees empty space) */}

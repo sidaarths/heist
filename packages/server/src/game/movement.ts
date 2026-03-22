@@ -3,19 +3,15 @@ import type { MapDef } from '@heist/shared'
 import { TileType } from '@heist/shared'
 import { BASE_MOVE_SPEED, LOOT_SPEED_PENALTY } from '@heist/shared'
 
-/**
- * Clamp a value to the range [min, max].
- */
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
 /**
  * Determine the TileType at a given (x, y) position in the map.
- * Returns TileType.Wall if out-of-bounds or no tile data available for that room.
+ * Returns TileType.Wall if the position is outside all rooms.
  */
 function getTileAt(map: MapDef, x: number, y: number): TileType {
-  // Floor to integer tile coordinates (floor = correct tile boundary)
   const tx = Math.floor(x)
   const ty = Math.floor(y)
 
@@ -26,30 +22,23 @@ function getTileAt(map: MapDef, x: number, y: number): TileType {
       ty >= room.y &&
       ty < room.y + room.height
     ) {
-      // Tiles are indexed as tiles[row][col] = tiles[localY][localX]
       const localX = tx - room.x
       const localY = ty - room.y
       if (room.tiles && room.tiles[localY] && room.tiles[localY][localX] !== undefined) {
         return room.tiles[localY][localX]
       }
-      // Room exists but no tile data — treat as floor (legacy maps)
       return TileType.Floor
     }
   }
 
-  // Out of all rooms — treat as wall / out of bounds
   return TileType.Wall
 }
 
 /**
- * Apply a player move command, validating against walls and applying
- * speed modifiers (loot penalty, freeze gate).
+ * Apply a player move command, validating against walls and doors.
  *
- * @param state  - mutable game state
- * @param map    - map definition used for wall collision
- * @param playerId - player initiating the move
- * @param dx     - horizontal direction, in range [-1, 1] (clamped server-side)
- * @param dy     - vertical direction, in range [-1, 1] (clamped server-side)
+ * Wall tiles block movement unless there is an unlocked door at that tile.
+ * Locked doors also block movement (player must pick the lock first).
  */
 export function applyPlayerMove(
   state: GameState,
@@ -61,14 +50,11 @@ export function applyPlayerMove(
   const pos = state.playerPositions.find(p => p.playerId === playerId)
   if (!pos) return
 
-  // Frozen players cannot move
   if (pos.frozen) return
 
-  // Clamp input to [-1, 1] to prevent client-side exploit
   const cdx = clamp(dx, -1, 1)
   const cdy = clamp(dy, -1, 1)
 
-  // Apply loot speed penalty: multiply per item carried
   let speed = BASE_MOVE_SPEED
   for (let i = 0; i < pos.lootCarried.length; i++) {
     speed *= LOOT_SPEED_PENALTY
@@ -77,12 +63,16 @@ export function applyPlayerMove(
   const newX = pos.x + cdx * speed
   const newY = pos.y + cdy * speed
 
-  // Wall collision: check the destination tile
   const tile = getTileAt(map, newX, newY)
   if (tile === TileType.Wall) {
-    return
+    // Check for a door in this gap tile — unlocked doors are passable
+    const tx = Math.floor(newX)
+    const ty = Math.floor(newY)
+    const door = state.doors.find(d => d.x === tx && d.y === ty)
+    if (!door || door.locked) return // blocked: no door, or door is locked
+    // Unlocked door — fall through to position update
   }
 
-  pos.x = newX
-  pos.y = newY
+  pos.x = clamp(newX, 0, map.width - 1)
+  pos.y = clamp(newY, 0, map.height - 1)
 }

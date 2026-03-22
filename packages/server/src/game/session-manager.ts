@@ -1,5 +1,6 @@
 import type { GameState, ServerMessage } from '@heist/shared'
-import { BASIC_MAP, PLANNING_DURATION_MS, TICK_MS } from '@heist/shared'
+import { getRandomMap, PLANNING_DURATION_MS, TICK_MS } from '@heist/shared'
+import type { MapDef } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 import { initGameState } from './map-init'
 import { GameEngine } from './game-engine'
@@ -9,6 +10,7 @@ type BroadcastFn = (roomId: string, msg: ServerMessage) => void
 interface Session {
   engine: GameEngine
   state: GameState
+  map: MapDef
   timer: ReturnType<typeof setInterval> | null
 }
 
@@ -21,8 +23,9 @@ export class GameSessionManager {
   ) {}
 
   /**
-   * Called when a room transitions to 'planning'. Initialises game state,
-   * creates the engine, and starts the 1s planning countdown.
+   * Called when a room transitions to 'planning'. Picks a random map,
+   * initialises game state, and broadcasts planning_start so all clients
+   * can see the map layout during planning.
    */
   startPlanning(roomId: string): void {
     if (this.sessions.has(roomId)) return
@@ -30,11 +33,15 @@ export class GameSessionManager {
     const room = this.manager.getRoom(roomId)
     if (!room || room.phase !== 'planning') return
 
-    const state = initGameState(room, BASIC_MAP)
+    const map = getRandomMap()
+    const state = initGameState(room, map)
 
-    const engine = new GameEngine(state, BASIC_MAP, (msg) =>
+    const engine = new GameEngine(state, map, (msg) =>
       this.broadcast(roomId, msg),
     )
+
+    // Send full game state immediately so clients see the map during planning
+    this.broadcast(roomId, { type: 'planning_start', gameState: state })
 
     const totalSeconds = Math.floor(PLANNING_DURATION_MS / 1000)
     let secondsRemaining = totalSeconds
@@ -51,18 +58,14 @@ export class GameSessionManager {
       }
     }, 1000)
 
-    const session: Session = { engine, state, timer }
+    const session: Session = { engine, state, map, timer }
     this.sessions.set(roomId, session)
   }
 
-  /**
-   * Called when planning countdown reaches 0. Starts the 20 tps heist tick loop.
-   */
   private startHeist(roomId: string): void {
     const session = this.sessions.get(roomId)
     if (!session) return
 
-    // Sync room phase on the manager's room object
     const room = this.manager.getRoom(roomId)
     if (room) room.phase = 'heist'
     session.state.room.phase = 'heist'

@@ -61,6 +61,9 @@ export function App() {
             currentRoom.value = { ...currentRoom.value, phase: msg.phase }
           }
           break
+        case 'planning_start':
+          currentGameState.value = msg.gameState
+          break
         case 'game_start':
           currentGameState.value = msg.gameState
           if (currentRoom.value) {

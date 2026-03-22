@@ -185,11 +185,7 @@ export function tickGuardCollisions(state: GameState): void {
   for (const guard of state.guards) {
     for (const pos of state.playerPositions) {
       if (!thiefIds.has(pos.playerId)) continue
-      if (pos.frozen) {
-        // Refresh freeze timer if already frozen (keep at max)
-        pos.frozenTicksRemaining = FREEZE_DURATION_TICKS
-        continue
-      }
+      if (pos.frozen) continue // already frozen, let the timer tick down
 
       const dx = pos.x - guard.x
       const dy = pos.y - guard.y

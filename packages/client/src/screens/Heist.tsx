@@ -21,11 +21,16 @@ import {
   myPlayer,
 } from '../state/client-state'
 import {
-  BASIC_MAP, TICK_MS, TICK_RATE,
+  MAPS, TICK_MS, TICK_RATE, THIEF_VISION_TILES,
   PICK_LOCK_TICKS, DESTROY_CAMERA_TICKS, DISABLE_ALARM_TICKS,
 } from '@heist/shared'
 import { MapRenderer, TILE } from '../canvas/MapRenderer'
 import { EntityLayer, type InteractionProgress } from '../canvas/EntityLayer'
+
+// Resolve the correct MapDef from a mapId — falls back to first map
+function getMapDef(mapId: string | undefined) {
+  return MAPS.find(m => m.id === mapId) ?? MAPS[0]
+}
 
 function actionDurationMs(action: string): number {
   switch (action) {
@@ -56,8 +61,7 @@ const Y   = '#ffcc00'
 const BG  = '#0a0a0f'
 const PANEL_BG = '#06060e'
 
-// ─── Map renderer singletons ──────────────────────────────────────────────────
-const mapRenderer = new MapRenderer(BASIC_MAP)
+// EntityLayer is stateless — one instance is fine
 const entityLayer = new EntityLayer()
 
 // ─── Key → direction mapping ──────────────────────────────────────────────────
@@ -491,7 +495,11 @@ function SecurityHud({ gs }: { gs: GameState | null }) {
 
 // ─── Heist screen ─────────────────────────────────────────────────────────────
 export function Heist() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasRef  = useRef<HTMLCanvasElement>(null)
+  // MapRenderer is recreated whenever the map changes
+  const mapRendererRef = useRef<{ renderer: MapRenderer; mapId: string } | null>(null)
+  // Offscreen canvas for fog of war (reused each frame to avoid GC pressure)
+  const fogCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const me         = myPlayer.value
   const gs         = currentGameState.value
@@ -539,9 +547,6 @@ export function Heist() {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    canvas.width  = mapRenderer.pixelWidth
-    canvas.height = mapRenderer.pixelHeight
-
     let frameId: number
     function renderFrame() {
       const ctx = canvas!.getContext('2d')
@@ -550,14 +555,28 @@ export function Heist() {
       const state = currentGameState.value
       if (!state) {
         ctx.fillStyle = BG
-        ctx.fillRect(0, 0, canvas!.width, canvas!.height)
+        ctx.fillRect(0, 0, canvas!.width || 800, canvas!.height || 600)
         frameId = requestAnimationFrame(renderFrame)
         return
       }
 
-      mapRenderer.draw(ctx, state.doors)
+      // Lazily create / update the map renderer when map changes
+      if (!mapRendererRef.current || mapRendererRef.current.mapId !== state.mapId) {
+        const mapDef = getMapDef(state.mapId)
+        mapRendererRef.current = { renderer: new MapRenderer(mapDef), mapId: state.mapId }
+        canvas!.width  = mapRendererRef.current.renderer.pixelWidth
+        canvas!.height = mapRendererRef.current.renderer.pixelHeight
+        // Also size the fog canvas
+        if (fogCanvasRef.current) {
+          fogCanvasRef.current.width  = canvas!.width
+          fogCanvasRef.current.height = canvas!.height
+        }
+      }
+      const mr = mapRendererRef.current.renderer
 
-      // Compute current interaction progress for canvas ring
+      mr.draw(ctx, state.doors)
+
+      // Compute interaction progress for canvas ring
       let interactionProgress: InteractionProgress | null = null
       const inter = interactionRef.current
       if (inter && myPlayerId.value) {
@@ -567,10 +586,42 @@ export function Heist() {
 
       entityLayer.draw(ctx, state, myPlayerId.value, playerRoleMapRef.current, waypointsRef.current, interactionProgress)
 
-      // Lights-out fog for thieves
-      if (state.lightsOut && !isSecurity) {
-        ctx.fillStyle = 'rgba(0,0,8,0.82)'
-        ctx.fillRect(0, 0, canvas!.width, canvas!.height)
+      // ── Thief fog of war ─────────────────────────────────────────────────
+      if (!isSecurity) {
+        const myPos = state.playerPositions.find(p => p.playerId === myPlayerId.value)
+        if (myPos) {
+          const px = myPos.x * TILE + TILE / 2
+          const py = myPos.y * TILE + TILE / 2
+          const visionR = THIEF_VISION_TILES * TILE * (state.lightsOut ? 0.4 : 1)
+
+          // Reuse offscreen fog canvas
+          if (!fogCanvasRef.current) {
+            fogCanvasRef.current = document.createElement('canvas')
+            fogCanvasRef.current.width  = canvas!.width
+            fogCanvasRef.current.height = canvas!.height
+          }
+          const fc = fogCanvasRef.current
+          const fctx = fc.getContext('2d')!
+          fctx.clearRect(0, 0, fc.width, fc.height)
+
+          // Solid fog layer
+          fctx.globalCompositeOperation = 'source-over'
+          fctx.fillStyle = 'rgba(0,0,5,0.96)'
+          fctx.fillRect(0, 0, fc.width, fc.height)
+
+          // Cut vision hole using radial gradient
+          fctx.globalCompositeOperation = 'destination-out'
+          const grad = fctx.createRadialGradient(px, py, visionR * 0.45, px, py, visionR)
+          grad.addColorStop(0, 'rgba(0,0,0,1)')
+          grad.addColorStop(1, 'rgba(0,0,0,0)')
+          fctx.fillStyle = grad
+          fctx.beginPath()
+          fctx.arc(px, py, visionR, 0, Math.PI * 2)
+          fctx.fill()
+
+          fctx.globalCompositeOperation = 'source-over'
+          ctx.drawImage(fc, 0, 0)
+        }
       }
 
       frameId = requestAnimationFrame(renderFrame)
@@ -651,19 +702,22 @@ export function Heist() {
           setWaypoints(prev => [...prev, { x: tx, y: ty }])
         }
       } else {
-        // Thief: interact with nearest object
-        const RANGE = 2
-        const nearby = (ox: number, oy: number) =>
-          Math.abs(ox - tx) <= RANGE && Math.abs(oy - ty) <= RANGE
+        // Thief: interact with nearest object in range of PLAYER position (not click)
+        const myPos = state.playerPositions.find(p => p.playerId === myPlayerId.value)
+        if (!myPos) return
 
-        // Loot (highest priority — instant)
+        const RANGE = 2.0
+        const nearby = (ox: number, oy: number) =>
+          Math.abs(ox - myPos.x) <= RANGE && Math.abs(oy - myPos.y) <= RANGE
+
+        // Loot (instant pick-up)
         for (const item of state.loot) {
           if (!item.carried && nearby(item.x, item.y)) {
             connection.send({ type: 'player_action', action: 'take_loot', targetId: item.id })
             return
           }
         }
-        // Timed interactions
+
         function startTimed(
           action: 'pick_lock' | 'destroy_camera' | 'disable_alarm',
           targetId: string,
@@ -675,6 +729,7 @@ export function Heist() {
             durationMs: actionDurationMs(action),
           }
         }
+
         // Locked door → pick lock
         for (const door of state.doors) {
           if (door.locked && nearby(door.x, door.y)) {
@@ -689,11 +744,13 @@ export function Heist() {
             return
           }
         }
-        // Alarm panel → disable
-        for (const panel of state.alarmPanels) {
-          if (!panel.disabled && nearby(panel.x, panel.y)) {
-            startTimed('disable_alarm', panel.id)
-            return
+        // Alarm panel → disable (only available when alarm is triggered)
+        if (state.alarmTriggered) {
+          for (const panel of state.alarmPanels) {
+            if (!panel.disabled && nearby(panel.x, panel.y)) {
+              startTimed('disable_alarm', panel.id)
+              return
+            }
           }
         }
       }

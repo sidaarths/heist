@@ -77,6 +77,8 @@ export interface ExitPoint {
 
 export interface GameState {
   room: GameRoom
+  /** Which map is loaded — used by clients to look up the MapDef. */
+  mapId: string
   loot: LootItem[]
   doors: Door[]
   cameras: Camera[]
