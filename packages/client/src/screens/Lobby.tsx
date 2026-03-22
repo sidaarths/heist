@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
-import type { ServerMessage, PlayerRole, PlayerInfo } from '@heist/shared'
+import type { PlayerRole, PlayerInfo } from '@heist/shared' // PlayerInfo used in room.players.map
 import { connection } from '../net/connection'
 import {
   currentRoom, myPlayerId, myPlayerName, myPlayer,
   isSecurityTaken, errorMessage, isLoading,
-  setRoom, setError, clearError,
+  setError, clearError,
 } from '../state/client-state'
 
 // ─── CSS animations injected once ────────────────────────────────────────────
@@ -93,76 +93,27 @@ const CARD = '#0c0c16'
 export function Lobby() {
   const [playerName, setPlayerName] = useState('')
   const [joinCode,   setJoinCode]   = useState('')
-  const [view,       setView]       = useState<'home' | 'in-room'>('home')
   const [joinMode,   setJoinMode]   = useState(false)
   const [copied,     setCopied]     = useState(false)
   const copyTimer                   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const room          = currentRoom.value
-  const me            = myPlayer.value
-  const error         = errorMessage.value
-  const loading       = isLoading.value
-  const secTaken      = isSecurityTaken.value
+  const room     = currentRoom.value
+  const me       = myPlayer.value
+  const error    = errorMessage.value
+  const loading  = isLoading.value
+  const secTaken = isSecurityTaken.value
+
+  // Derive view from signals — no local state needed
+  const inRoom = myPlayerId.value !== null
 
   useEffect(() => {
     injectCSS()
-    connection.connect()
-
-    const unsub = connection.onMessage((msg: ServerMessage) => {
-      switch (msg.type) {
-        case 'room_created':
-          myPlayerId.value = msg.playerId
-          currentRoom.value = null
-          setView('in-room')
-          clearError()
-          break
-        case 'room_joined':
-          myPlayerId.value = msg.playerId
-          setView('in-room')
-          clearError()
-          break
-        case 'room_state':
-          setRoom(msg.room)
-          isLoading.value = false
-          break
-        case 'player_updated':
-          if (currentRoom.value) {
-            const idx = currentRoom.value.players.findIndex((p: PlayerInfo) => p.id === msg.player.id)
-            if (idx >= 0) {
-              const players = [...currentRoom.value.players]
-              players[idx] = msg.player
-              currentRoom.value = { ...currentRoom.value, players }
-            }
-          }
-          break
-        case 'player_left':
-          if (currentRoom.value) {
-            currentRoom.value = {
-              ...currentRoom.value,
-              players: currentRoom.value.players.filter((p: PlayerInfo) => p.id !== msg.playerId),
-            }
-          }
-          break
-        case 'phase_change':
-          if (currentRoom.value) {
-            currentRoom.value = { ...currentRoom.value, phase: msg.phase }
-          }
-          break
-        case 'error':
-          setError(msg.message)
-          isLoading.value = false
-          break
-      }
-    })
-
-    return unsub
   }, [])
 
   function handleCreateRoom() {
     if (!playerName.trim()) { setError('ENTER YOUR CALLSIGN FIRST.'); return }
     myPlayerName.value = playerName.trim()
-    isLoading.value = true
-    clearError()
+    isLoading.value = true; clearError()
     connection.send({ type: 'create_room', playerName: playerName.trim() })
   }
 
@@ -170,8 +121,7 @@ export function Lobby() {
     if (!playerName.trim()) { setError('ENTER YOUR CALLSIGN FIRST.'); return }
     if (joinCode.trim().length !== 6) { setError('JOB CODE MUST BE 6 CHARACTERS.'); return }
     myPlayerName.value = playerName.trim()
-    isLoading.value = true
-    clearError()
+    isLoading.value = true; clearError()
     connection.send({ type: 'join_room', roomId: joinCode.trim().toUpperCase(), playerName: playerName.trim() })
   }
 
@@ -202,7 +152,6 @@ export function Lobby() {
     myPlayerName.value = ''
     isLoading.value   = false
     clearError()
-    setView('home')
     setJoinMode(false)
   }
 
@@ -252,7 +201,7 @@ export function Lobby() {
   ) : null
 
   // ─── Waiting for room data ─────────────────────────────────────────────────
-  if (view === 'in-room' && !room) {
+  if (inRoom && !room) {
     return (
       <div style={pageWrap}>
         <div class="fade-up" style={card}>
@@ -265,7 +214,7 @@ export function Lobby() {
   }
 
   // ─── In-room view ──────────────────────────────────────────────────────────
-  if (view === 'in-room' && room) {
+  if (inRoom && room) {
     const canReady = me?.role !== 'unassigned'
     return (
       <div style={pageWrap}>

@@ -1,4 +1,4 @@
 import { render } from 'preact'
-import { Lobby } from './screens/Lobby'
+import { App } from './App'
 
-render(<Lobby />, document.getElementById('app')!)
+render(<App />, document.getElementById('app')!)

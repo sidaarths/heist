@@ -1,5 +1,5 @@
 import { signal, computed } from '@preact/signals'
-import type { GameRoom, PlayerInfo } from '@heist/shared'
+import type { GameRoom, GameState, PlayerInfo } from '@heist/shared'
 
 // Connection state
 export const wsConnected = signal<boolean>(false)
@@ -27,6 +27,20 @@ const securityPlayer = computed<PlayerInfo | null>(() => {
 export const isSecurityTaken = computed<boolean>(() => {
   return securityPlayer.value !== null
 })
+
+// Game state (set when game_start received)
+export const currentGameState = signal<GameState | null>(null)
+
+// Planning phase countdown
+export const planningSecondsRemaining = signal<number>(60)
+
+// Thief chat messages (thieves only)
+export interface ChatEntry { fromName: string; message: string; id: number }
+export const chatMessages = signal<ChatEntry[]>([])
+let chatSeq = 0
+export function addChatMessage(fromName: string, message: string): void {
+  chatMessages.value = [...chatMessages.value, { fromName, message, id: chatSeq++ }]
+}
 
 // UI state
 export const errorMessage = signal<string | null>(null)
