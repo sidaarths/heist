@@ -10,7 +10,7 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
 
 function isOriginAllowed(origin: string): boolean {
   return ALLOWED_ORIGINS.some(pattern => {
-    if (pattern.startsWith('*.')) return origin.endsWith(pattern.slice(1))
+    if (pattern.startsWith('*')) return origin.endsWith(pattern.slice(1))
     return pattern === origin
   })
 }
