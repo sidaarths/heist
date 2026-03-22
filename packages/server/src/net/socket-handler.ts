@@ -21,11 +21,13 @@ export class SocketHandler {
   server: ReturnType<typeof Bun.serve> | null = null
 
   constructor(private manager: RoomManager) {
-    this.router = new MessageRouter(manager, (roomId, msg) =>
-      this.broadcastToThieves(roomId, msg),
-    )
     this.sessions = new GameSessionManager(manager, (roomId, msg) =>
       this.broadcast(roomId, msg),
+    )
+    this.router = new MessageRouter(
+      manager,
+      (roomId, msg) => this.broadcastToThieves(roomId, msg),
+      this.sessions,
     )
   }
 

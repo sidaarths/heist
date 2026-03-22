@@ -45,6 +45,8 @@ export class MessageRouter {
         return this.handlePlayerAction(playerId, message, respond)
       case 'security_action':
         return this.handleSecurityAction(playerId, message, respond)
+      case 'reset_room':
+        return this.handleResetRoom(playerId, respond)
       default:
         respond({
           type: 'error',
@@ -361,5 +363,26 @@ export class MessageRouter {
     if (!session) return
 
     session.engine.handleSecurityAction(playerId, message.action, message.targetId, message.patrolPath)
+  }
+
+  private handleResetRoom(playerId: string, respond: Responder): void {
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    if (room.hostId !== playerId) {
+      respond({ type: 'error', code: 'NOT_HOST', message: 'Only the host can reset the room.' })
+      return
+    }
+
+    // Reset room phase to lobby and unready all players
+    room.phase = 'lobby'
+    for (const p of room.players) {
+      p.ready = false
+    }
+
+    respond({ type: 'room_state', room })
   }
 }

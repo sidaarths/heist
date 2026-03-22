@@ -11,6 +11,7 @@ export type ClientMessage =
   | { type: 'player_move'; dx: number; dy: number }
   | { type: 'player_action'; action: 'pick_lock' | 'destroy_camera' | 'disable_alarm' | 'take_loot' | 'drop_loot'; targetId: string }
   | { type: 'security_action'; action: 'lock_door' | 'unlock_door' | 'trigger_alarm' | 'cut_lights' | 'release_guard'; targetId?: string; patrolPath?: Array<{ x: number; y: number }> }
+  | { type: 'reset_room' }
 
 // Server -> Client messages
 export type ServerMessage =

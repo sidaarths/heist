@@ -17,6 +17,11 @@ export default defineConfig({
   // so we don't share state between scenarios.
   fullyParallel: true,
 
+  // Heist-phase tests must wait 60s for planning to end before seeing the
+  // heist canvas, and result-screen tests need another 90s for lockdown.
+  // Set the global timeout high enough and let individual tests override downward.
+  timeout: 250_000,
+
   // Retry once to absorb transient WS-server noise; the single-process Bun
   // server can briefly time out when all browser projects hammer it in parallel.
   retries: 1,

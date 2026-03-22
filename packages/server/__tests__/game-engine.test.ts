@@ -376,7 +376,7 @@ describe('GameEngine', () => {
       engine.advanceTick()
 
       expect(messages.some(m => m.type === 'game_over')).toBe(true)
-      expect(state.room.phase).toBe('resolution')
+      expect(state.room.phase as string).toBe('resolution')
     })
   })
 })

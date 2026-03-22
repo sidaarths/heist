@@ -50,6 +50,25 @@ export function clearChatMessages(): void {
   chatSeq = 0
 }
 
+// ─── Game-over / result state ─────────────────────────────────────────────────
+export interface GameOverResult {
+  winner: 'thieves' | 'security'
+  reason: string
+}
+
+export const gameOverResult = signal<GameOverResult | null>(null)
+
+export function handleGameOver(winner: 'thieves' | 'security', reason: string): void {
+  gameOverResult.value = { winner, reason }
+  if (currentRoom.value) {
+    currentRoom.value = { ...currentRoom.value, phase: 'resolution' }
+  }
+}
+
+export function clearGameOver(): void {
+  gameOverResult.value = null
+}
+
 // UI state
 export const errorMessage = signal<string | null>(null)
 export const isLoading = signal<boolean>(false)
