@@ -1,4 +1,3 @@
-import { h } from 'preact'
 import { useState, useEffect } from 'preact/hooks'
 import type { ServerMessage, PlayerRole, PlayerInfo } from '@heist/shared'
 import { connection } from '../net/connection'

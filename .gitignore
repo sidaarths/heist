@@ -26,3 +26,8 @@ Thumbs.db
 # Coverage
 coverage/
 .vercel
+
+# Playwright
+packages/client/playwright-report/
+packages/client/playwright-output/
+packages/client/test-results/

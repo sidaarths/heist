@@ -68,14 +68,18 @@ export class SocketHandler {
     this.router.route(playerId, parsed, (response: ServerMessage) => {
       ws.send(JSON.stringify(response))
 
-      // After a successful create_room or join_room, subscribe to the room topic
+      // After create_room or join_room, subscribe and push room_state to all members
       if (response.type === 'room_created' || response.type === 'room_joined') {
         const roomId = response.roomId
         ws.subscribe(`room:${roomId}`)
-        // Broadcast updated room state to all players in the room
-        const room = this.manager.getRoom(roomId)
-        if (room) {
-          this.broadcast(roomId, { type: 'room_state', room }, playerId)
+        this.broadcastRoomState(roomId)
+      }
+
+      // After a state-mutating action (role/ready), push updated state to other room members
+      if (response.type === 'room_state') {
+        const roomId = this.manager.playerRoomMap.get(playerId)
+        if (roomId) {
+          this.broadcastRoomState(roomId, playerId)
         }
       }
     })
@@ -90,8 +94,8 @@ export class SocketHandler {
       const result = this.manager.leaveRoom(roomId, playerId)
       this.manager.playerRoomMap.delete(playerId)
       if (result.room) {
+        this.broadcastRoomState(roomId)
         this.broadcast(roomId, { type: 'player_left', playerId })
-        this.broadcast(roomId, { type: 'room_state', room: result.room })
       }
     }
 
@@ -104,19 +108,25 @@ export class SocketHandler {
   }
 
   /**
-   * Broadcast a message to all connected players in a room.
-   * If excludePlayerId is provided, skip that player.
+   * Broadcast a message to all subscribers of a room topic.
    */
-  broadcast(roomId: string, message: ServerMessage, excludePlayerId?: string): void {
-    const data = JSON.stringify(message)
-    if (excludePlayerId) {
-      this.connections.forEach((wsHandle, pid) => {
-        if (pid !== excludePlayerId) {
-          wsHandle.send(data)
-        }
-      })
-    } else if (this.server) {
-      this.server.publish(`room:${roomId}`, data)
+  broadcast(roomId: string, message: ServerMessage): void {
+    if (this.server) {
+      this.server.publish(`room:${roomId}`, JSON.stringify(message))
+    }
+  }
+
+  /**
+   * Send room_state to every player currently in the room.
+   * If excludePlayerId is set, skip that player (they already received it via respond()).
+   */
+  private broadcastRoomState(roomId: string, excludePlayerId?: string): void {
+    const room = this.manager.getRoom(roomId)
+    if (!room) return
+    const msg = JSON.stringify({ type: 'room_state', room } satisfies ServerMessage)
+    for (const player of room.players) {
+      if (player.id === excludePlayerId) continue
+      this.connections.get(player.id)?.send(msg)
     }
   }
 }

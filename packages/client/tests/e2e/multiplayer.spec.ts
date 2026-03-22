@@ -182,8 +182,9 @@ twoPlayerTest.describe('Two-player lobby', () => {
       await pageB.getByRole('button', { name: 'Ready Up' }).click()
 
       // Each player should see two "ready" badges — one for each player.
-      await expect(pageA.getByText('ready')).toHaveCount(2, { timeout: 10_000 })
-      await expect(pageB.getByText('ready')).toHaveCount(2, { timeout: 10_000 })
+      // Use exact:true to avoid matching the "Not Ready" button text.
+      await expect(pageA.getByText('ready', { exact: true })).toHaveCount(2, { timeout: 10_000 })
+      await expect(pageB.getByText('ready', { exact: true })).toHaveCount(2, { timeout: 10_000 })
     },
   )
 
