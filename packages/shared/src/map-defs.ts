@@ -1,9 +1,6 @@
 export enum TileType {
   Floor = 'floor',
   Wall = 'wall',
-  Door = 'door',
-  Window = 'window',
-  Vault = 'vault',
 }
 
 export interface MapRoom {

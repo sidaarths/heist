@@ -3,11 +3,10 @@ import type { ServerMessage, PlayerInfo } from '@heist/shared'
 import { connection } from './net/connection'
 import {
   currentRoom, myPlayerId,
-  currentGameState, planningSecondsRemaining, addChatMessage,
+  currentGameState, addChatMessage,
   setRoom, setError, clearError, handleGameOver, clearGameOver, clearChatMessages,
 } from './state/client-state'
 import { Lobby } from './screens/Lobby'
-import { Planning } from './screens/Planning'
 import { Heist } from './screens/Heist'
 import { Result } from './screens/Result'
 
@@ -61,9 +60,6 @@ export function App() {
             currentRoom.value = { ...currentRoom.value, phase: msg.phase }
           }
           break
-        case 'planning_start':
-          currentGameState.value = msg.gameState
-          break
         case 'game_start':
           currentGameState.value = msg.gameState
           if (currentRoom.value) {
@@ -76,9 +72,6 @@ export function App() {
         case 'game_over':
           handleGameOver(msg.winner, msg.reason)
           break
-        case 'planning_tick':
-          planningSecondsRemaining.value = msg.secondsRemaining
-          break
         case 'chat_message':
           addChatMessage(msg.fromName, msg.message)
           break
@@ -90,10 +83,6 @@ export function App() {
 
     return unsub
   }, [])
-
-  if (phase === 'planning') {
-    return <Planning />
-  }
 
   if (phase === 'heist') {
     return <Heist />

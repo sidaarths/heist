@@ -3,10 +3,11 @@ import type { GameState } from '@heist/shared'
 import {
   COOLDOWN_LOCK_DOOR_TICKS,
   COOLDOWN_CUT_LIGHTS_TICKS,
+  COOLDOWN_RELEASE_GUARD_TICKS,
   CUT_LIGHTS_DURATION_TICKS,
-  LOCKDOWN_DURATION_MS,
-  TICK_MS,
+  ALARM_LOCKDOWN_TICKS,
   FREEZE_DURATION_TICKS,
+  MAX_GUARDS_PER_ROOM,
 } from '@heist/shared'
 
 /** Map: securityPlayerId → (actionName → ticksRemaining) */
@@ -75,18 +76,23 @@ export function handleUnlockDoor(
 
 /**
  * Security: trigger the alarm. One-time action while not already triggered.
- * Starts the lockdown countdown.
+ * If heistTicksRemaining > 60s cap, saves current value and reduces to 60s.
  */
 export function handleTriggerAlarm(
   state: GameState,
   securityPlayerId: string,
   cooldowns: SecurityCooldowns,
 ): void {
-  // Cannot re-trigger while lockdown is already active
+  // Cannot re-trigger while alarm is already active
   if (state.alarmTriggered) return
 
   state.alarmTriggered = true
-  state.lockdownTicksRemaining = Math.floor(LOCKDOWN_DURATION_MS / TICK_MS)
+
+  if (state.heistTicksRemaining > ALARM_LOCKDOWN_TICKS) {
+    state.preAlarmTicksRemaining = state.heistTicksRemaining
+    state.heistTicksRemaining = ALARM_LOCKDOWN_TICKS
+  }
+  // If already <= 60s, leave the timer unchanged
 }
 
 /**
@@ -108,13 +114,17 @@ export function handleCutLights(
 /**
  * Security: release a guard with a specified patrol path.
  * Guard is spawned at the first waypoint. Requires ≥ 2 waypoints.
+ * Capped at MAX_GUARDS_PER_ROOM active guards; has a cooldown per the security player.
  */
 export function handleReleaseGuard(
   state: GameState,
   securityPlayerId: string,
   patrolPath: Array<{ x: number; y: number }>,
+  cooldowns: SecurityCooldowns,
 ): void {
   if (patrolPath.length < 2) return
+  if (isOnCooldown(cooldowns, securityPlayerId, 'release_guard')) return
+  if (state.guards.length >= MAX_GUARDS_PER_ROOM) return
 
   state.guards.push({
     id: randomUUID(),
@@ -124,6 +134,7 @@ export function handleReleaseGuard(
     patrolIndex: 0,
     alerted: false,
   })
+  applyCooldown(cooldowns, securityPlayerId, 'release_guard', COOLDOWN_RELEASE_GUARD_TICKS)
 }
 
 // ─── Per-tick operations ─────────────────────────────────────────────────────
@@ -168,10 +179,6 @@ export function tickSecurityCooldowns(
     }
   }
 
-  // Lockdown countdown (only while alarm is active)
-  if (state.alarmTriggered && state.lockdownTicksRemaining > 0) {
-    state.lockdownTicksRemaining--
-  }
 }
 
 /**

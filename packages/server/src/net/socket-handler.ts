@@ -13,16 +13,27 @@ interface RateLimit {
   resetAt: number
 }
 
+/** Max simultaneous WebSocket connections from a single IP address. */
+const MAX_CONNECTIONS_PER_IP = 5
+/** Max messages per second summed across all connections from a single IP. */
+const MAX_MESSAGES_PER_IP_PER_SEC = 100
+
 export class SocketHandler {
   private router: MessageRouter
   private sessions: GameSessionManager
   connections: Map<string, ServerWebSocket<SocketData>> = new Map()
   private rateLimits: Map<string, RateLimit> = new Map()
+  /** Per-IP message rate limits (keyed by remoteAddress). */
+  private ipRateLimits: Map<string, RateLimit> = new Map()
+  /** Per-IP active connection tracking (ip → Set of playerIds). */
+  private ipConnections: Map<string, Set<string>> = new Map()
   server: ReturnType<typeof Bun.serve> | null = null
 
   constructor(private manager: RoomManager) {
-    this.sessions = new GameSessionManager(manager, (roomId, msg) =>
-      this.broadcast(roomId, msg),
+    this.sessions = new GameSessionManager(
+      manager,
+      (roomId, msg) => this.broadcast(roomId, msg),
+      (playerId, msg) => this.connections.get(playerId)?.send(JSON.stringify(msg)),
     )
     this.router = new MessageRouter(
       manager,
@@ -33,15 +44,37 @@ export class SocketHandler {
 
   open(ws: ServerWebSocket<SocketData>): void {
     const { playerId } = ws.data
+    const ip = ws.remoteAddress
+
+    // IP-level connection cap to prevent connection-cycling DoS
+    const ipConns = this.ipConnections.get(ip) ?? new Set<string>()
+    if (ipConns.size >= MAX_CONNECTIONS_PER_IP) {
+      ws.close(1008, 'Too many connections from this IP')
+      return
+    }
+    ipConns.add(playerId)
+    this.ipConnections.set(ip, ipConns)
+
     this.connections.set(playerId, ws)
     console.log(`[WS] Player connected: ${playerId}`)
   }
 
   message(ws: ServerWebSocket<SocketData>, raw: string | Buffer): void {
     const { playerId } = ws.data
+    const ip = ws.remoteAddress
+    const now = Date.now()
+
+    // Per-IP rate limit: hard close on sustained flooding
+    const ipLimit = this.ipRateLimits.get(ip) ?? { count: 0, resetAt: now + 1000 }
+    if (now > ipLimit.resetAt) { ipLimit.count = 0; ipLimit.resetAt = now + 1000 }
+    ipLimit.count++
+    this.ipRateLimits.set(ip, ipLimit)
+    if (ipLimit.count > MAX_MESSAGES_PER_IP_PER_SEC) {
+      ws.close(1008, 'IP rate limit exceeded')
+      return
+    }
 
     // Per-connection rate limiting: max 20 messages per second
-    const now = Date.now()
     const limit = this.rateLimits.get(playerId) ?? { count: 0, resetAt: now + 1000 }
     if (now > limit.resetAt) {
       limit.count = 0
@@ -89,10 +122,12 @@ export class SocketHandler {
         const roomId = this.manager.playerRoomMap.get(playerId)
         if (roomId) {
           this.broadcastRoomState(roomId, playerId)
-          // Kick off planning phase if the room just transitioned
+          // Kick off game if the room just transitioned out of lobby
+          // Only check 'planning' — once heist is running startGame is idempotent
+          // but we avoid calling it redundantly on every in-game room_state broadcast.
           const room = this.manager.getRoom(roomId)
           if (room?.phase === 'planning') {
-            this.sessions.startPlanning(roomId)
+            this.sessions.startGame(roomId)
           }
         }
       }
@@ -101,7 +136,18 @@ export class SocketHandler {
 
   close(ws: ServerWebSocket<SocketData>, code: number, reason: string): void {
     const { playerId } = ws.data
+    const ip = ws.remoteAddress
     console.log(`[WS] Player disconnected: ${playerId} (${code})`)
+
+    // Clean up IP tracking
+    const ipConns = this.ipConnections.get(ip)
+    if (ipConns) {
+      ipConns.delete(playerId)
+      if (ipConns.size === 0) {
+        this.ipConnections.delete(ip)
+        this.ipRateLimits.delete(ip)
+      }
+    }
 
     const roomId = this.manager.playerRoomMap.get(playerId)
     if (roomId) {

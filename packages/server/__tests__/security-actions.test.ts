@@ -8,6 +8,7 @@ import {
   handleReleaseGuard,
   tickSecurityCooldowns,
   tickGuardCollisions,
+  type SecurityCooldowns,
 } from '../src/game/security-actions'
 import type {
   GameState,
@@ -19,9 +20,10 @@ import type {
 import {
   COOLDOWN_LOCK_DOOR_TICKS,
   CUT_LIGHTS_DURATION_TICKS,
-  LOCKDOWN_DURATION_MS,
-  TICK_MS,
+  HEIST_DURATION_TICKS,
+  ALARM_LOCKDOWN_TICKS,
   FREEZE_DURATION_TICKS,
+  MAX_GUARDS_PER_ROOM,
 } from '@heist/shared'
 
 function makeRoom(): GameRoom {
@@ -58,7 +60,8 @@ function makeState(overrides?: {
     exit: { x: 30, y: 30 },
     tick: 0,
     alarmTriggered: false,
-    lockdownTicksRemaining: Math.floor(LOCKDOWN_DURATION_MS / TICK_MS),
+    heistTicksRemaining: HEIST_DURATION_TICKS,
+    preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
   }
@@ -144,15 +147,25 @@ describe('security-actions — trigger_alarm', () => {
     expect(state.alarmTriggered).toBe(true)
   })
 
-  it('trigger_alarm starts lockdown countdown at LOCKDOWN_DURATION_MS / TICK_MS ticks', () => {
+  it('trigger_alarm caps heistTicksRemaining to ALARM_LOCKDOWN_TICKS if over 60s', () => {
     const state = makeState()
-    state.lockdownTicksRemaining = 0
+    state.heistTicksRemaining = HEIST_DURATION_TICKS
     const cooldowns: Cooldowns = new Map()
 
     handleTriggerAlarm(state, 'sec1', cooldowns)
 
-    const expectedTicks = Math.floor(LOCKDOWN_DURATION_MS / TICK_MS)
-    expect(state.lockdownTicksRemaining).toBe(expectedTicks)
+    expect(state.heistTicksRemaining).toBe(ALARM_LOCKDOWN_TICKS)
+    expect(state.preAlarmTicksRemaining).toBe(HEIST_DURATION_TICKS)
+  })
+
+  it('trigger_alarm does not change timer if already <= ALARM_LOCKDOWN_TICKS', () => {
+    const state = makeState()
+    state.heistTicksRemaining = 500 // already under 60s
+    const cooldowns: Cooldowns = new Map()
+
+    handleTriggerAlarm(state, 'sec1', cooldowns)
+
+    expect(state.heistTicksRemaining).toBe(500) // unchanged
   })
 
   it('trigger_alarm cannot be triggered twice while already active', () => {
@@ -160,11 +173,11 @@ describe('security-actions — trigger_alarm', () => {
     const cooldowns: Cooldowns = new Map()
 
     handleTriggerAlarm(state, 'sec1', cooldowns)
-    state.lockdownTicksRemaining = 500 // simulate partial countdown
+    state.heistTicksRemaining = 300 // simulate partial countdown
     handleTriggerAlarm(state, 'sec1', cooldowns)
 
-    // Should not reset; still 500
-    expect(state.lockdownTicksRemaining).toBe(500)
+    // Should not re-trigger; still 300
+    expect(state.heistTicksRemaining).toBe(300)
   })
 })
 
@@ -206,9 +219,10 @@ describe('security-actions — cut_lights', () => {
 describe('security-actions — release_guard', () => {
   it('release_guard adds a guard to state.guards with given patrol path', () => {
     const state = makeState()
+    const cooldowns: SecurityCooldowns = new Map()
     const patrolPath = [{ x: 5, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 10 }]
 
-    handleReleaseGuard(state, 'sec1', patrolPath)
+    handleReleaseGuard(state, 'sec1', patrolPath, cooldowns)
 
     expect(state.guards.length).toBe(1)
     expect(state.guards[0].patrolPath).toEqual(patrolPath)
@@ -216,9 +230,10 @@ describe('security-actions — release_guard', () => {
 
   it('release_guard places guard at first waypoint of path', () => {
     const state = makeState()
+    const cooldowns: SecurityCooldowns = new Map()
     const patrolPath = [{ x: 7, y: 3 }, { x: 12, y: 3 }]
 
-    handleReleaseGuard(state, 'sec1', patrolPath)
+    handleReleaseGuard(state, 'sec1', patrolPath, cooldowns)
 
     expect(state.guards[0].x).toBe(7)
     expect(state.guards[0].y).toBe(3)
@@ -226,18 +241,51 @@ describe('security-actions — release_guard', () => {
 
   it('release_guard with empty path does not add a guard', () => {
     const state = makeState()
+    const cooldowns: SecurityCooldowns = new Map()
 
-    handleReleaseGuard(state, 'sec1', [])
+    handleReleaseGuard(state, 'sec1', [], cooldowns)
 
     expect(state.guards.length).toBe(0)
   })
 
   it('release_guard with single waypoint does not add a guard (need ≥ 2)', () => {
     const state = makeState()
+    const cooldowns: SecurityCooldowns = new Map()
 
-    handleReleaseGuard(state, 'sec1', [{ x: 5, y: 5 }])
+    handleReleaseGuard(state, 'sec1', [{ x: 5, y: 5 }], cooldowns)
 
     expect(state.guards.length).toBe(0)
+  })
+
+  it('release_guard respects MAX_GUARDS_PER_ROOM cap', () => {
+    const state = makeState()
+    const cooldowns: SecurityCooldowns = new Map()
+    const patrolPath = [{ x: 5, y: 5 }, { x: 10, y: 5 }]
+
+    // Fill up to the cap
+    for (let i = 0; i < MAX_GUARDS_PER_ROOM; i++) {
+      const fresh: SecurityCooldowns = new Map() // fresh cooldowns each call
+      handleReleaseGuard(state, 'sec1', patrolPath, fresh)
+    }
+    expect(state.guards.length).toBe(MAX_GUARDS_PER_ROOM)
+
+    // One more must be rejected
+    const fresh: SecurityCooldowns = new Map()
+    handleReleaseGuard(state, 'sec1', patrolPath, fresh)
+    expect(state.guards.length).toBe(MAX_GUARDS_PER_ROOM)
+  })
+
+  it('release_guard applies cooldown — second call within cooldown is rejected', () => {
+    const state = makeState()
+    const cooldowns: SecurityCooldowns = new Map()
+    const patrolPath = [{ x: 5, y: 5 }, { x: 10, y: 5 }]
+
+    handleReleaseGuard(state, 'sec1', patrolPath, cooldowns)
+    expect(state.guards.length).toBe(1)
+
+    // Same cooldowns map — second call should be blocked
+    handleReleaseGuard(state, 'sec1', patrolPath, cooldowns)
+    expect(state.guards.length).toBe(1)
   })
 })
 

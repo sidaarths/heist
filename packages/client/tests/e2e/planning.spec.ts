@@ -1,15 +1,14 @@
 /**
- * planning.spec.ts — Planning phase flows.
+ * heist-chat.spec.ts — Heist-phase chat and timer tests.
  *
- * Minimum game: 2 players (1 Security + 1 Thief).
- * Most tests use 2 contexts; cross-thief chat tests use 3.
+ * Planning phase has been removed — the game starts immediately after
+ * LAUNCH HEIST is clicked. These tests verify:
  *
- * Covers:
- *  1. After all players ready → host clicks LAUNCH HEIST → planning screen appears.
- *  2. Planning countdown shows MM:SS and decrements.
- *  3. Thief sees map panel and chat sidebar.
- *  4. Security sees map panel but NO chat sidebar.
- *  5. Thief chat message is visible to the sender.
+ *  1. Thief sees the chat sidebar in the heist screen.
+ *  2. Security does NOT see the chat sidebar.
+ *  3. Heist timer displays MM:SS format.
+ *  4. Heist timer decrements.
+ *  5. Thief chat message is visible in their own panel.
  *  6. Security does not receive thief chat messages.
  *  7. (3-player) Thief chat appears for all thieves.
  *  8. (3-player) Chat shows sender name prefix.
@@ -60,9 +59,9 @@ const threePlayerTest = test.extend<{
   pageC: async ({ ctxC }, use) => { const p = await ctxC.newPage(); await use(p) },
 })
 
-// ─── Helper: 2-player planning phase ─────────────────────────────────────────
+// ─── Helper: 2-player heist phase ─────────────────────────────────────────────
 
-async function startPlanningPhase2(
+async function startHeist2(
   pageSec: Page,
   pageThief: Page,
 ): Promise<{ roomCode: string }> {
@@ -72,29 +71,26 @@ async function startPlanningPhase2(
   await goHome(pageThief)
   await joinRoom(pageThief, 'Thief1', roomCode)
 
-  // Assign roles
   await pageSec.getByTestId('security-btn').click()
   await pageThief.getByTestId('thief-btn').click()
 
-  // Both ready up
   await pageSec.getByTestId('ready-btn').click()
   await pageThief.getByTestId('ready-btn').click()
 
-  // Wait for host to see the enabled launch button, then click it
   await launchHeist(pageSec)
 
-  // Both should reach the planning screen
+  // No planning phase — heist canvas should appear almost immediately
   await Promise.all([
-    expect(pageSec.getByTestId('planning-countdown')).toBeVisible({ timeout: 15_000 }),
-    expect(pageThief.getByTestId('planning-countdown')).toBeVisible({ timeout: 15_000 }),
+    expect(pageSec.getByTestId('heist-canvas')).toBeVisible({ timeout: 15_000 }),
+    expect(pageThief.getByTestId('heist-canvas')).toBeVisible({ timeout: 15_000 }),
   ])
 
   return { roomCode }
 }
 
-// ─── Helper: 3-player planning phase ─────────────────────────────────────────
+// ─── Helper: 3-player heist phase ─────────────────────────────────────────────
 
-async function startPlanningPhase3(
+async function startHeist3(
   pageSec: Page,
   pageT1: Page,
   pageT2: Page,
@@ -119,9 +115,9 @@ async function startPlanningPhase3(
   await launchHeist(pageSec)
 
   await Promise.all([
-    expect(pageSec.getByTestId('planning-countdown')).toBeVisible({ timeout: 15_000 }),
-    expect(pageT1.getByTestId('planning-countdown')).toBeVisible({ timeout: 15_000 }),
-    expect(pageT2.getByTestId('planning-countdown')).toBeVisible({ timeout: 15_000 }),
+    expect(pageSec.getByTestId('heist-canvas')).toBeVisible({ timeout: 15_000 }),
+    expect(pageT1.getByTestId('heist-canvas')).toBeVisible({ timeout: 15_000 }),
+    expect(pageT2.getByTestId('heist-canvas')).toBeVisible({ timeout: 15_000 }),
   ])
 
   return { roomCode }
@@ -129,68 +125,54 @@ async function startPlanningPhase3(
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-twoPlayerTest.describe('Planning phase', () => {
+twoPlayerTest.describe('Heist phase — chat and timer', () => {
   twoPlayerTest(
-    'both players transition to planning screen after host launches',
+    'game starts immediately — no planning screen',
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
-      await startPlanningPhase2(pageA, pageB)
+      await startHeist2(pageA, pageB)
 
-      await expect(pageA.getByTestId('planning-countdown')).toBeVisible()
-      await expect(pageB.getByTestId('planning-countdown')).toBeVisible()
+      // Heist canvas must be visible for both players
+      await expect(pageA.getByTestId('heist-canvas')).toBeVisible()
+      await expect(pageB.getByTestId('heist-canvas')).toBeVisible()
     },
   )
 
   twoPlayerTest(
-    'planning countdown shows a time value and decrements',
+    'heist timer shows MM:SS format and decrements',
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
-      await startPlanningPhase2(pageA, pageB)
+      await startHeist2(pageA, pageB)
 
-      const countdown = pageA.getByTestId('planning-countdown')
+      const timer = pageA.getByTestId('heist-timer')
+      await expect(timer).toBeVisible({ timeout: 5_000 })
 
-      // Must show MM:SS format — e.g. "1:00" or "0:59"
-      await expect(countdown).toHaveText(/^\d+:\d{2}$/, { timeout: 5_000 })
+      // Must show MM:SS format — e.g. "5:00" or "4:59"
+      await expect(timer).toHaveText(/^\d+:\d{2}$/, { timeout: 5_000 })
 
-      // Read the first value and wait for it to decrement
-      const first = (await countdown.textContent()) ?? ''
-      await expect(countdown).not.toHaveText(first, { timeout: 3_000 })
+      // Read and wait for it to decrement
+      const first = (await timer.textContent()) ?? ''
+      await expect(timer).not.toHaveText(first, { timeout: 5_000 })
     },
   )
 
   twoPlayerTest(
-    'planning screen header shows PLANNING PHASE label',
-    async ({ pageA, pageB }) => {
-      await startPlanningPhase2(pageA, pageB)
-
-      await expect(pageA.getByText('PLANNING PHASE')).toBeVisible()
-      await expect(pageB.getByText('PLANNING PHASE')).toBeVisible()
-    },
-  )
-
-  twoPlayerTest(
-    'thief sees the chat sidebar; security does not',
+    'thief sees chat sidebar during heist; security does not',
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       // pageA = Security, pageB = Thief
-      await startPlanningPhase2(pageA, pageB)
+      await startHeist2(pageA, pageB)
 
-      await expect(pageB.getByTestId('chat-panel')).toBeVisible()
+      await expect(pageB.getByTestId('chat-panel')).toBeVisible({ timeout: 5_000 })
       await expect(pageA.getByTestId('chat-panel')).not.toBeVisible()
     },
   )
 
   twoPlayerTest(
-    'thief sees MAP CLASSIFIED overlay; security does not',
-    async ({ pageA, pageB }) => {
-      await startPlanningPhase2(pageA, pageB)
-
-      await expect(pageB.getByText('MAP CLASSIFIED')).toBeVisible()
-      await expect(pageA.getByText('MAP CLASSIFIED')).not.toBeVisible()
-    },
-  )
-
-  twoPlayerTest(
     'thief chat message is visible in their own panel',
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
-      await startPlanningPhase2(pageA, pageB)
+      await startHeist2(pageA, pageB)
 
       await pageB.getByTestId('chat-input').fill('vault is on the right')
       await pageB.getByTestId('chat-input').press('Enter')
@@ -201,14 +183,16 @@ twoPlayerTest.describe('Planning phase', () => {
 
   twoPlayerTest(
     'security does not see thief chat messages',
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
-      await startPlanningPhase2(pageA, pageB)
+      await startHeist2(pageA, pageB)
 
       await pageB.getByTestId('chat-input').fill('secret plan alpha')
       await pageB.getByTestId('chat-input').press('Enter')
 
       await expect(pageB.getByTestId('chat-messages')).toContainText('secret plan alpha', { timeout: 5_000 })
 
+      // Security has no chat panel at all
       await expect(pageA.getByTestId('chat-panel')).not.toBeVisible()
       await expect(pageA.getByText('secret plan alpha')).not.toBeVisible()
     },
@@ -217,17 +201,16 @@ twoPlayerTest.describe('Planning phase', () => {
 
 // ─── Cross-thief chat (needs 3 players) ───────────────────────────────────────
 
-threePlayerTest.describe('Planning phase — cross-thief chat', () => {
+threePlayerTest.describe('Heist phase — cross-thief chat', () => {
   threePlayerTest(
     'thief chat message appears for all thieves',
+    { timeout: 30_000 },
     async ({ pageA, pageB, pageC }) => {
-      await startPlanningPhase3(pageA, pageB, pageC)
+      await startHeist3(pageA, pageB, pageC)
 
-      // pageB (Thief1) sends a message
       await pageB.getByTestId('chat-input').fill('vault is on the right')
       await pageB.getByTestId('chat-input').press('Enter')
 
-      // Both thieves should see the message
       await expect(pageB.getByTestId('chat-messages')).toContainText('vault is on the right', { timeout: 5_000 })
       await expect(pageC.getByTestId('chat-messages')).toContainText('vault is on the right', { timeout: 5_000 })
     },
@@ -235,13 +218,13 @@ threePlayerTest.describe('Planning phase — cross-thief chat', () => {
 
   threePlayerTest(
     'thief chat shows sender name prefix',
+    { timeout: 30_000 },
     async ({ pageA, pageB, pageC }) => {
-      await startPlanningPhase3(pageA, pageB, pageC)
+      await startHeist3(pageA, pageB, pageC)
 
       await pageB.getByTestId('chat-input').fill('hello crew')
       await pageB.getByTestId('chat-input').press('Enter')
 
-      // Thief2 should see Thief1's name prefix
       await expect(pageC.getByTestId('chat-messages')).toContainText('Thief1', { timeout: 5_000 })
       await expect(pageC.getByTestId('chat-messages')).toContainText('hello crew', { timeout: 5_000 })
     },

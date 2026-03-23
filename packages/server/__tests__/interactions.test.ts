@@ -11,6 +11,7 @@ import {
   PICK_LOCK_TICKS,
   DESTROY_CAMERA_TICKS,
   DISABLE_ALARM_TICKS,
+  HEIST_DURATION_TICKS,
 } from '@heist/shared'
 
 function makeRoom(): GameRoom {
@@ -56,7 +57,8 @@ function makeBaseState(overrides?: {
     exit: { x: 10, y: 10 },
     tick: 0,
     alarmTriggered: false,
-    lockdownTicksRemaining: 1800,
+    heistTicksRemaining: HEIST_DURATION_TICKS,
+    preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
   }
@@ -194,11 +196,12 @@ describe('interactions — disable_alarm', () => {
     expect(active.ticksRemaining).toBe(DISABLE_ALARM_TICKS)
   })
 
-  it('disable_alarm completes → cancels active lockdown (alarmTriggered = false, lockdownTicksRemaining reset)', () => {
+  it('disable_alarm completes → alarmTriggered = false, restores heistTicksRemaining', () => {
     const panel: AlarmPanel = { id: 'panel1', x: 5, y: 6, disabled: false, triggered: false }
     const state = makeBaseState({ alarmPanels: [panel] })
     state.alarmTriggered = true
-    state.lockdownTicksRemaining = 500
+    state.heistTicksRemaining = 500
+    state.preAlarmTicksRemaining = 3000 // saved pre-alarm value
     const interactions = new Map()
 
     startInteraction(state, 'thief1', 'disable_alarm', 'panel1', interactions)
@@ -207,8 +210,12 @@ describe('interactions — disable_alarm', () => {
       tickInteractions(state, interactions)
     }
 
+    // elapsed = ALARM_LOCKDOWN_TICKS(1200) - heistTicksRemaining(500) = 700
+    // restored = preAlarmTicksRemaining(3000) - elapsed(700) = 2300
     expect(state.alarmTriggered).toBe(false)
     expect(panel.disabled).toBe(true)
+    expect(state.heistTicksRemaining).toBe(2300) // 3000 - 700 elapsed lockdown ticks
+    expect(state.preAlarmTicksRemaining).toBeNull()
     expect(interactions.has('thief1')).toBe(false)
   })
 

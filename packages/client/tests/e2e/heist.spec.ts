@@ -1,18 +1,16 @@
 /**
  * heist.spec.ts — Heist phase E2E tests.
  *
+ * No planning phase — the game starts immediately after LAUNCH HEIST.
+ *
  * Covers:
- *  1. Heist screen renders after planning phase ends (game_start → heist).
+ *  1. Heist screen renders immediately after host launches.
  *  2. WASD keys send player_move messages (intercept WS).
  *  3. Security toolbar visible only for Security player.
  *  4. Security action buttons send correct security_action message.
- *  5. Lockdown timer counts down on screen.
- *  6. game_over shows result screen with correct winner.
+ *  5. Lockdown banner appears and timer counts down when alarm is triggered.
+ *  6. game_over shows result screen with correct winner (60s after alarm).
  *  7. Play again button returns to lobby screen.
- *
- * The planning phase is 60 seconds, so each test that needs to reach the heist
- * screen uses a 120 000ms per-test timeout (passed as the test options object).
- * Result-screen tests wait an additional 90s for lockdown, so they use 180 000ms.
  */
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
@@ -78,10 +76,10 @@ async function startHeistPhase(
 
   await launchHeist(pageSec)
 
-  // Server auto-transitions planning → heist after 60 seconds.
+  // No planning phase — heist canvas should appear almost immediately.
   await Promise.all([
-    expect(pageSec.getByTestId('heist-canvas')).toBeVisible({ timeout: 90_000 }),
-    expect(pageThief.getByTestId('heist-canvas')).toBeVisible({ timeout: 90_000 }),
+    expect(pageSec.getByTestId('heist-canvas')).toBeVisible({ timeout: 15_000 }),
+    expect(pageThief.getByTestId('heist-canvas')).toBeVisible({ timeout: 15_000 }),
   ])
 
   return { roomCode }
@@ -92,8 +90,8 @@ async function startHeistPhase(
 twoPlayerTest.describe('Heist screen', () => {
 
   twoPlayerTest(
-    'heist canvas renders for both players after planning phase ends',
-    { timeout: 120_000 },
+    'heist canvas renders for both players immediately after launch',
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       await startHeistPhase(pageA, pageB)
 
@@ -104,7 +102,7 @@ twoPlayerTest.describe('Heist screen', () => {
 
   twoPlayerTest(
     'heist screen shows role label in HUD',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       await startHeistPhase(pageA, pageB)
 
@@ -116,7 +114,7 @@ twoPlayerTest.describe('Heist screen', () => {
 
   twoPlayerTest(
     'WASD keys send player_move messages over WebSocket',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       // Register before navigation
       const { frames: framesB } = collectWsFrames(pageB)
@@ -135,7 +133,7 @@ twoPlayerTest.describe('Heist screen', () => {
 
   twoPlayerTest(
     'W key sends player_move with dy=-1',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageB)
 
@@ -152,7 +150,7 @@ twoPlayerTest.describe('Heist screen', () => {
 
   twoPlayerTest(
     'S key sends player_move with dy=1',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageB)
 
@@ -169,7 +167,7 @@ twoPlayerTest.describe('Heist screen', () => {
 
   twoPlayerTest(
     'A key sends player_move with dx=-1',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageB)
 
@@ -186,7 +184,7 @@ twoPlayerTest.describe('Heist screen', () => {
 
   twoPlayerTest(
     'D key sends player_move with dx=1',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageB)
 
@@ -209,7 +207,7 @@ twoPlayerTest.describe('Security toolbar', () => {
 
   twoPlayerTest(
     'security toolbar is visible to Security player only',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       await startHeistPhase(pageA, pageB)
 
@@ -222,7 +220,7 @@ twoPlayerTest.describe('Security toolbar', () => {
 
   twoPlayerTest(
     'Trigger Alarm button sends security_action trigger_alarm message',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageA)
 
@@ -238,7 +236,7 @@ twoPlayerTest.describe('Security toolbar', () => {
 
   twoPlayerTest(
     'Cut Lights button sends security_action cut_lights message',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageA)
 
@@ -254,7 +252,7 @@ twoPlayerTest.describe('Security toolbar', () => {
 
   twoPlayerTest(
     'Lock Door button sends security_action lock_door message',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageA)
 
@@ -270,7 +268,7 @@ twoPlayerTest.describe('Security toolbar', () => {
 
   twoPlayerTest(
     'Release Guard button sends security_action release_guard message',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       const { frames } = collectWsFrames(pageA)
 
@@ -292,7 +290,7 @@ twoPlayerTest.describe('Lockdown timer', () => {
 
   twoPlayerTest(
     'lockdown banner appears after alarm is triggered and counts down',
-    { timeout: 120_000 },
+    { timeout: 30_000 },
     async ({ pageA, pageB }) => {
       await startHeistPhase(pageA, pageB)
 
@@ -314,41 +312,41 @@ twoPlayerTest.describe('Lockdown timer', () => {
 })
 
 // ─── Result screen ────────────────────────────────────────────────────────────
-// These tests are slow: 60s planning + 90s lockdown = ~150s minimum.
+// Alarm caps heistTicksRemaining to 60s — result screen appears ~65s after alarm.
 
 twoPlayerTest.describe('Result screen', () => {
 
   twoPlayerTest(
     'game_over shows result screen with winner text for Security win',
-    { timeout: 240_000 },
+    { timeout: 120_000 },
     async ({ pageA, pageB }) => {
       await startHeistPhase(pageA, pageB)
 
-      // Security triggers alarm — lockdown countdown (90s) begins
+      // Security triggers alarm — heist timer is capped to 60s
       await pageA.getByTestId('btn-trigger-alarm').click()
 
-      // Wait for result screen (server sends game_over at lockdown=0 ~90s after alarm)
-      await expect(pageA.getByTestId('result-screen')).toBeVisible({ timeout: 130_000 })
+      // Wait for result screen (~60s for timer to expire)
+      await expect(pageA.getByTestId('result-screen')).toBeVisible({ timeout: 90_000 })
       await expect(pageA.getByTestId('result-winner')).toBeVisible()
     },
   )
 
   twoPlayerTest(
     'result screen shows Play Again button',
-    { timeout: 240_000 },
+    { timeout: 120_000 },
     async ({ pageA, pageB }) => {
       await startHeistPhase(pageA, pageB)
 
       await pageA.getByTestId('btn-trigger-alarm').click()
 
-      await expect(pageA.getByTestId('result-screen')).toBeVisible({ timeout: 130_000 })
+      await expect(pageA.getByTestId('result-screen')).toBeVisible({ timeout: 90_000 })
       await expect(pageA.getByTestId('play-again-btn')).toBeVisible()
     },
   )
 
   twoPlayerTest(
     'Play Again button returns both players to lobby screen',
-    { timeout: 240_000 },
+    { timeout: 120_000 },
     async ({ pageA, pageB }) => {
       await startHeistPhase(pageA, pageB)
 
@@ -356,8 +354,8 @@ twoPlayerTest.describe('Result screen', () => {
 
       // Wait for result on both pages
       await Promise.all([
-        expect(pageA.getByTestId('result-screen')).toBeVisible({ timeout: 130_000 }),
-        expect(pageB.getByTestId('result-screen')).toBeVisible({ timeout: 130_000 }),
+        expect(pageA.getByTestId('result-screen')).toBeVisible({ timeout: 90_000 }),
+        expect(pageB.getByTestId('result-screen')).toBeVisible({ timeout: 90_000 }),
       ])
 
       // Host clicks Play Again

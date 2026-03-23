@@ -3,8 +3,8 @@ import {
   PICK_LOCK_TICKS,
   DESTROY_CAMERA_TICKS,
   DISABLE_ALARM_TICKS,
-  LOCKDOWN_DURATION_MS,
-  TICK_MS,
+  ALARM_LOCKDOWN_TICKS,
+  LOOT_COUNT_MAX,
 } from '@heist/shared'
 
 /**
@@ -66,10 +66,10 @@ export function startInteraction(
     targetX = panel.x; targetY = panel.y
   }
 
-  // Proximity check: player must be within range of the target
-  const distX = Math.abs(pos.x - targetX)
-  const distY = Math.abs(pos.y - targetY)
-  if (distX > INTERACTION_START_RANGE || distY > INTERACTION_START_RANGE) return
+  // Proximity check: player must be within range of the target (Euclidean)
+  const distX = pos.x - targetX
+  const distY = pos.y - targetY
+  if (Math.sqrt(distX * distX + distY * distY) > INTERACTION_START_RANGE) return
 
   const ticksMap: Record<InteractionType, number> = {
     pick_lock:      PICK_LOCK_TICKS,
@@ -95,6 +95,12 @@ export function tickInteractions(state: GameState, interactions: InteractionMap)
   for (const [playerId, interaction] of interactions.entries()) {
     const pos = state.playerPositions.find(p => p.playerId === playerId)
     if (!pos) {
+      interactions.delete(playerId)
+      continue
+    }
+
+    // Cancel if player is frozen (guard caught them mid-interaction)
+    if (pos.frozen) {
       interactions.delete(playerId)
       continue
     }
@@ -132,7 +138,13 @@ function applyInteractionEffect(state: GameState, interaction: ActiveInteraction
       const panel = state.alarmPanels.find(p => p.id === interaction.targetId)
       if (panel) panel.disabled = true
       state.alarmTriggered = false
-      state.lockdownTicksRemaining = Math.floor(LOCKDOWN_DURATION_MS / TICK_MS)
+      // Restore pre-alarm timer, subtracting the lockdown ticks already elapsed
+      // so thieves can't recover more time than they lost.
+      if (state.preAlarmTicksRemaining !== null) {
+        const elapsed = ALARM_LOCKDOWN_TICKS - state.heistTicksRemaining
+        state.heistTicksRemaining = state.preAlarmTicksRemaining - elapsed
+        state.preAlarmTicksRemaining = null
+      }
       break
     }
   }
@@ -150,8 +162,13 @@ export function handleTakeLoot(
   const pos = state.playerPositions.find(p => p.playerId === playerId)
   if (!pos) return
 
-  // Proximity check
-  if (Math.abs(pos.x - lootItem.x) > 2.0 || Math.abs(pos.y - lootItem.y) > 2.0) return
+  // Defence-in-depth: cap carried items to prevent unbounded lootCarried array
+  if (pos.lootCarried.length >= LOOT_COUNT_MAX) return
+
+  // Proximity check (Euclidean)
+  const ldx = pos.x - lootItem.x
+  const ldy = pos.y - lootItem.y
+  if (Math.sqrt(ldx * ldx + ldy * ldy) > 2.0) return
 
   lootItem.carried = true
   lootItem.carriedBy = playerId

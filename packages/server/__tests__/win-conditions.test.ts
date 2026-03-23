@@ -8,7 +8,7 @@ import type {
   LootItem,
   Door,
 } from '@heist/shared'
-import { LOOT_TO_WIN, LOCKDOWN_DURATION_MS, TICK_MS } from '@heist/shared'
+import { LOOT_TO_WIN, HEIST_DURATION_TICKS } from '@heist/shared'
 
 function makeRoom(thiefIds: string[] = ['thief1', 'thief2']): GameRoom {
   return {
@@ -36,7 +36,7 @@ function makeState(overrides?: {
   loot?: LootItem[]
   doors?: Door[]
   alarmTriggered?: boolean
-  lockdownTicksRemaining?: number
+  heistTicksRemaining?: number
   thiefIds?: string[]
 }): GameState {
   const thiefIds = overrides?.thiefIds ?? ['thief1', 'thief2']
@@ -60,7 +60,8 @@ function makeState(overrides?: {
     exit: EXIT,
     tick: 0,
     alarmTriggered: overrides?.alarmTriggered ?? false,
-    lockdownTicksRemaining: overrides?.lockdownTicksRemaining ?? Math.floor(LOCKDOWN_DURATION_MS / TICK_MS),
+    heistTicksRemaining: overrides?.heistTicksRemaining ?? HEIST_DURATION_TICKS,
+    preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
   }
@@ -147,34 +148,21 @@ describe('win-conditions — thieves win', () => {
   })
 })
 
-describe('win-conditions — security wins (lockdown)', () => {
-  it('security wins when lockdown countdown reaches 0', () => {
+describe('win-conditions — security wins (timer)', () => {
+  it('security wins when heist timer reaches 0', () => {
     const state = makeState({
-      alarmTriggered: true,
-      lockdownTicksRemaining: 0,
+      heistTicksRemaining: 0,
     })
 
     const result = checkWinConditions(state)
     expect(result).not.toBeNull()
     expect(result!.winner).toBe('security')
-    expect(result!.reason).toMatch(/lockdown/i)
+    expect(result!.reason).toMatch(/time/i)
   })
 
-  it('security does NOT win when lockdown is active but countdown > 0', () => {
+  it('security does NOT win when heist timer is still running', () => {
     const state = makeState({
-      alarmTriggered: true,
-      lockdownTicksRemaining: 100,
-    })
-
-    const result = checkWinConditions(state)
-    expect(result).toBeNull()
-  })
-
-  it('security does NOT win on countdown=0 if alarm was never triggered', () => {
-    // lockdownTicksRemaining starts at full value; reaching 0 only matters if alarm triggered
-    const state = makeState({
-      alarmTriggered: false,
-      lockdownTicksRemaining: 0,
+      heistTicksRemaining: 100,
     })
 
     const result = checkWinConditions(state)
@@ -229,8 +217,8 @@ describe('win-conditions — game_over broadcast', () => {
     expect(result!.reason.length).toBeGreaterThan(0)
   })
 
-  it('returns a result object with winner and reason when security wins via lockdown', () => {
-    const state = makeState({ alarmTriggered: true, lockdownTicksRemaining: 0 })
+  it('returns a result object with winner and reason when security wins via timer', () => {
+    const state = makeState({ heistTicksRemaining: 0 })
 
     const result = checkWinConditions(state)
     expect(result).not.toBeNull()

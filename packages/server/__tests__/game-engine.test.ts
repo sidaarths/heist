@@ -116,39 +116,6 @@ describe('GameEngine', () => {
     })
   })
 
-  describe('planning phase timer', () => {
-    it('emits planning_tick events with decrementing secondsRemaining', () => {
-      const room = makeRoom()
-      const state = initGameState(room, BASIC_MAP)
-      state.room.phase = 'planning'
-
-      const ticks: number[] = []
-      const engine = new GameEngine(state, BASIC_MAP, (msg) => {
-        if (msg.type === 'planning_tick') ticks.push(msg.secondsRemaining)
-      })
-
-      engine.tickPlanningSecond(60)
-      engine.tickPlanningSecond(59)
-      engine.tickPlanningSecond(58)
-
-      expect(ticks).toEqual([60, 59, 58])
-    })
-
-    it('transitions room phase to heist when planning countdown reaches 0', () => {
-      const room = makeRoom()
-      const state = initGameState(room, BASIC_MAP)
-      state.room.phase = 'planning'
-
-      const messages: Array<{ type: string }> = []
-      const engine = new GameEngine(state, BASIC_MAP, (msg) => messages.push(msg))
-
-      engine.tickPlanningSecond(0)
-
-      expect(state.room.phase as string).toBe('heist')
-      expect(messages.some(m => m.type === 'game_start')).toBe(true)
-    })
-  })
-
   describe('replay buffer', () => {
     it('accumulates state snapshots during heist phase', () => {
       const room = makeRoom()
@@ -226,8 +193,9 @@ describe('GameEngine', () => {
       const state = initGameState(room, BASIC_MAP)
       state.room.phase = 'heist'
       const thief = room.players.find(p => p.role === 'thief')!
+      // Place loot within 2-tile Euclidean range of thief spawn (3,3)
       const lootItem: LootItem = {
-        id: 'loot1', x: 5, y: 5, value: 1, weight: 1, carried: false, carriedBy: null,
+        id: 'loot1', x: 4, y: 3, value: 1, weight: 1, carried: false, carriedBy: null,
       }
       state.loot.push(lootItem)
 

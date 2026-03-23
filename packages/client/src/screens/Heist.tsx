@@ -19,10 +19,13 @@ import {
   currentRoom,
   myPlayerId,
   myPlayer,
+  chatMessages,
+  addChatMessage,
 } from '../state/client-state'
 import {
   MAPS, TICK_MS, TICK_RATE, THIEF_VISION_TILES,
   PICK_LOCK_TICKS, DESTROY_CAMERA_TICKS, DISABLE_ALARM_TICKS,
+  CHAT_MESSAGE_MAX_LEN,
 } from '@heist/shared'
 import { MapRenderer, TILE } from '../canvas/MapRenderer'
 import { EntityLayer, type InteractionProgress } from '../canvas/EntityLayer'
@@ -128,6 +131,85 @@ function AbilityBtn({
       <span>{active ? `${label}` : (disabled ? `${secs}s` : label)}</span>
       {active && <span style={{ fontSize: '11px', color: Y, marginTop: '2px' }}>▼ CLICK MAP</span>}
     </button>
+  )
+}
+
+// ─── Thief chat panel (heist phase) ───────────────────────────────────────────
+function ThiefChatPanel() {
+  const messages = chatMessages.value
+  const [input, setInput] = useState('')
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages.length])
+
+  function sendMessage() {
+    const text = input.trim()
+    if (!text) return
+    connection.send({ type: 'chat', message: text })
+    setInput('')
+  }
+
+  return (
+    <div
+      data-testid="chat-panel"
+      style={{
+        width: '220px', minWidth: '220px',
+        display: 'flex', flexDirection: 'column',
+        borderLeft: `1px solid #1a2a1a`, background: '#08080f',
+        fontFamily: "'VT323', monospace",
+      }}
+    >
+      <div style={{
+        padding: '8px 12px', borderBottom: `1px solid #1a2a1a`,
+        color: '#4a7a4a', fontSize: '14px', letterSpacing: '2px',
+      }}>
+        ◈ CREW COMMS
+      </div>
+      <div
+        data-testid="chat-messages"
+        style={{
+          flex: 1, overflowY: 'auto', padding: '6px 10px',
+          display: 'flex', flexDirection: 'column', gap: '4px',
+        }}
+      >
+        {messages.length === 0 && (
+          <div style={{ color: '#2a4a2a', fontSize: '15px' }}>_ awaiting...</div>
+        )}
+        {messages.map(entry => (
+          <div key={entry.id} style={{ fontSize: '16px', lineHeight: '1.3' }}>
+            <span style={{ color: P }}>{entry.fromName}:</span>{' '}
+            <span style={{ color: '#c8ffc8' }}>{entry.message}</span>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      <div style={{ padding: '6px', borderTop: `1px solid #1a2a1a`, display: 'flex', gap: '4px' }}>
+        <input
+          data-testid="chat-input"
+          style={{
+            flex: 1, background: '#06060e', border: `1px solid #2a3a2a`,
+            color: '#c8ffc8', padding: '4px 8px', fontSize: '16px',
+            fontFamily: "'VT323', monospace", outline: 'none',
+          }}
+          type="text"
+          placeholder="transmit..."
+          value={input}
+          maxLength={CHAT_MESSAGE_MAX_LEN}
+          onInput={(e) => setInput((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+        />
+        <button
+          onClick={sendMessage}
+          style={{
+            background: '#1a2a1a', border: `1px solid #2a4a2a`,
+            color: '#00ff88', padding: '4px 10px', cursor: 'pointer',
+            fontSize: '16px', fontFamily: "'VT323', monospace",
+          }}
+        >▶</button>
+      </div>
+    </div>
   )
 }
 
@@ -306,7 +388,7 @@ function SecurityPanel({
           letterSpacing: '2px',
           textAlign: 'center',
         }}>
-          ⚠ LOCKDOWN {Math.ceil((gs?.lockdownTicksRemaining ?? 0) / TICK_RATE)}s
+          ⚠ LOCKDOWN {Math.ceil((gs?.heistTicksRemaining ?? 0) / TICK_RATE)}s
         </div>
       )}
     </div>
@@ -323,7 +405,10 @@ function ThiefHud({ gs, myId, lightsOut, interactionBar }: {
   const myPos     = gs?.playerPositions.find(p => p.playerId === myId)
   const lootCount = myPos?.lootCarried.length ?? 0
   const lockdown  = gs?.alarmTriggered ?? false
-  const lockSecs  = gs ? Math.ceil(gs.lockdownTicksRemaining / TICK_RATE) : 0
+  const heistSecs = gs ? Math.ceil(gs.heistTicksRemaining / TICK_RATE) : 0
+  const heistMins = Math.floor(heistSecs / 60)
+  const heistSecPad = String(heistSecs % 60).padStart(2, '0')
+  const timerUrgent = heistSecs <= 60
 
   return (
     <>
@@ -365,6 +450,21 @@ function ThiefHud({ gs, myId, lightsOut, interactionBar }: {
         )}
       </div>
 
+      {/* Global heist timer */}
+      <div style={{
+        position: 'absolute', top: 10, right: 12,
+        pointerEvents: 'none', zIndex: 10,
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: '14px',
+        color: timerUrgent ? R : G,
+        textShadow: timerUrgent ? `0 0 14px ${R}` : `0 0 10px ${G}`,
+        letterSpacing: '3px',
+      }}
+        data-testid="heist-timer"
+      >
+        {heistMins}:{heistSecPad}
+      </div>
+
       {lockdown && (
         <div data-testid="lockdown-banner" style={{
           position: 'absolute', top: 0, left: 0, right: 0,
@@ -383,7 +483,7 @@ function ThiefHud({ gs, myId, lightsOut, interactionBar }: {
             fontFamily: "'Press Start 2P', monospace",
             fontSize: '11px', color: '#ffcc00',
           }}>
-            {lockSecs}s
+            {heistSecs}s
           </span>
         </div>
       )}
@@ -449,8 +549,11 @@ function ThiefHud({ gs, myId, lightsOut, interactionBar }: {
 
 // ─── Security HUD (minimal — panel has the detail) ────────────────────────────
 function SecurityHud({ gs }: { gs: GameState | null }) {
-  const lockdown = gs?.alarmTriggered ?? false
-  const lockSecs = gs ? Math.ceil(gs.lockdownTicksRemaining / TICK_RATE) : 0
+  const lockdown  = gs?.alarmTriggered ?? false
+  const heistSecs = gs ? Math.ceil(gs.heistTicksRemaining / TICK_RATE) : 0
+  const heistMins = Math.floor(heistSecs / 60)
+  const heistSecPad = String(heistSecs % 60).padStart(2, '0')
+  const timerUrgent = heistSecs <= 60
 
   return (
     <>
@@ -466,6 +569,20 @@ function SecurityHud({ gs }: { gs: GameState | null }) {
         }}>
           SECURITY
         </span>
+      </div>
+      {/* Global heist timer */}
+      <div style={{
+        position: 'absolute', top: 10, right: 12,
+        pointerEvents: 'none', zIndex: 10,
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: '14px',
+        color: timerUrgent ? R : B,
+        textShadow: timerUrgent ? `0 0 14px ${R}` : `0 0 10px ${B}`,
+        letterSpacing: '3px',
+      }}
+        data-testid="heist-timer"
+      >
+        {heistMins}:{heistSecPad}
       </div>
       {lockdown && (
         <div data-testid="lockdown-banner" style={{
@@ -485,7 +602,7 @@ function SecurityHud({ gs }: { gs: GameState | null }) {
             fontFamily: "'Press Start 2P', monospace",
             fontSize: '11px', color: '#ffcc00',
           }}>
-            {lockSecs}s
+            {heistSecs}s
           </span>
         </div>
       )}
@@ -836,20 +953,23 @@ export function Heist() {
     )
   }
 
-  // ── THIEF LAYOUT: full canvas with HUD overlay ────────────────────────────
+  // ── THIEF LAYOUT: canvas + chat sidebar ──────────────────────────────────
   return (
-    <div style={{ height: '100vh', background: BG, overflow: 'hidden', position: 'relative' }}>
-      <canvas
-        data-testid="heist-canvas"
-        ref={canvasRef}
-        style={{
-          display: 'block',
-          imageRendering: 'pixelated' as const,
-          cursor: canvasCursor,
-        }}
-        tabIndex={0}
-      />
-      <ThiefHud gs={gs} myId={myId} lightsOut={gs?.lightsOut ?? false} interactionBar={interactionBar} />
+    <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <canvas
+          data-testid="heist-canvas"
+          ref={canvasRef}
+          style={{
+            display: 'block',
+            imageRendering: 'pixelated' as const,
+            cursor: canvasCursor,
+          }}
+          tabIndex={0}
+        />
+        <ThiefHud gs={gs} myId={myId} lightsOut={gs?.lightsOut ?? false} interactionBar={interactionBar} />
+      </div>
+      <ThiefChatPanel />
     </div>
   )
 }

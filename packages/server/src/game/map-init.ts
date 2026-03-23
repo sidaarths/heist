@@ -9,8 +9,7 @@ import {
   LOOT_COUNT_MAX,
   ALARM_PANEL_COUNT_MIN,
   ALARM_PANEL_COUNT_MAX,
-  LOCKDOWN_DURATION_MS,
-  TICK_MS,
+  HEIST_DURATION_TICKS,
 } from '@heist/shared'
 
 function randInt(min: number, max: number): number {
@@ -128,8 +127,6 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
     })
   })
 
-  const lockdownTicks = Math.floor(LOCKDOWN_DURATION_MS / TICK_MS)
-
   return {
     room,
     mapId: map.id,
@@ -142,7 +139,8 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
     exit,
     tick: 0,
     alarmTriggered: false,
-    lockdownTicksRemaining: lockdownTicks,
+    heistTicksRemaining: HEIST_DURATION_TICKS,
+    preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
   }

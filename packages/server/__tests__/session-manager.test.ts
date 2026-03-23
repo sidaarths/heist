@@ -1,13 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { randomUUID } from 'crypto'
 import { RoomManager } from '../src/lobby'
 import { GameSessionManager } from '../src/game/session-manager'
 import type { ServerMessage } from '@heist/shared'
 
-/** Fast-forward all pending timers using Bun's built-in fake timers. */
+/** Replace setInterval/clearInterval with controllable fakes. */
 function useFakeTimers() {
-  // Bun doesn't yet expose jest-style fake timers, so we use a manual approach:
-  // replace setInterval/clearInterval with a controllable version for this module.
   const intervals: Map<number, { fn: () => void; ms: number }> = new Map()
   let nextId = 1
 
@@ -24,17 +22,9 @@ function useFakeTimers() {
   }
 
   return {
-    /** Run every registered interval callback once. */
-    tick() {
-      for (const { fn } of intervals.values()) fn()
-    },
-    /** Run every registered interval callback N times. */
-    tickN(n: number) {
-      for (let i = 0; i < n; i++) this.tick()
-    },
-    activeCount() {
-      return intervals.size
-    },
+    tick() { for (const { fn } of intervals.values()) fn() },
+    tickN(n: number) { for (let i = 0; i < n; i++) this.tick() },
+    activeCount() { return intervals.size },
     restore() {
       ;(globalThis as any).setInterval = origSetInterval
       ;(globalThis as any).clearInterval = origClearInterval
@@ -42,8 +32,8 @@ function useFakeTimers() {
   }
 }
 
-/** Set up a minimal 2-player room in planning phase. */
-function makePlanningRoom(manager: RoomManager) {
+/** Set up a minimal 2-player room transitioned to the planning phase. */
+function makeReadyRoom(manager: RoomManager) {
   const hostId = randomUUID()
   const guestId = randomUUID()
 
@@ -86,102 +76,54 @@ describe('GameSessionManager', () => {
     timers.restore()
   })
 
-  // ─── startPlanning ──────────────────────────────────────────────────────────
+  // ─── startGame ──────────────────────────────────────────────────────────────
 
-  describe('startPlanning', () => {
+  describe('startGame', () => {
     it('registers the session after starting', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
       expect(sessions.getSession(room.id)).toBeDefined()
     })
 
     it('is idempotent — calling twice does not create a second session', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
-      sessions.startPlanning(room.id)
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
+      sessions.startGame(room.id)
       expect(timers.activeCount()).toBe(1)
     })
 
     it('does nothing for an unknown roomId', () => {
-      sessions.startPlanning('DOES-NOT-EXIST')
+      sessions.startGame('DOES-NOT-EXIST')
       expect(sessions.getSession('DOES-NOT-EXIST')).toBeUndefined()
       expect(timers.activeCount()).toBe(0)
     })
 
-    it('does nothing if room phase is not planning', () => {
-      const r = manager.createRoom('Alice', randomUUID())
-      if ('error' in r) throw new Error()
-      // Room is still in lobby phase
-      sessions.startPlanning(r.room.id)
-      expect(sessions.getSession(r.room.id)).toBeUndefined()
-    })
-
-    it('broadcasts planning_tick on each interval tick', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
-
-      timers.tick()
-
-      const ticks = broadcasts.filter(b => b.msg.type === 'planning_tick')
-      expect(ticks.length).toBeGreaterThan(0)
-      expect(ticks[0].roomId).toBe(room.id)
-    })
-
-    it('planning_tick secondsRemaining decrements with each tick', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
-
-      timers.tick()
-      const first = (broadcasts.at(-1)!.msg as any).secondsRemaining as number
-
-      timers.tick()
-      const second = (broadcasts.at(-1)!.msg as any).secondsRemaining as number
-
-      expect(second).toBe(first - 1)
-    })
-  })
-
-  // ─── startHeist (via countdown reaching 0) ──────────────────────────────────
-
-  describe('startHeist (via countdown)', () => {
-    it('transitions room phase to heist when countdown reaches 0', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
-
-      // The planning timer counts from totalSeconds → 0 then calls startHeist.
-      // Each tick decrements secondsRemaining by 1 after broadcasting.
-      // After PLANNING_DURATION_MS/1000 + 1 ticks the heist timer fires.
-      const totalSeconds = 60
-      timers.tickN(totalSeconds + 1)
-
-      const r = manager.getRoom(room.id)
-      expect(r?.phase).toBe('heist')
-    })
-
-    it('broadcasts game_start when countdown reaches 0', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
-
-      timers.tickN(61)
+    it('broadcasts game_start immediately', () => {
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
 
       const gameStart = broadcasts.find(b => b.msg.type === 'game_start')
       expect(gameStart).toBeDefined()
       expect(gameStart!.roomId).toBe(room.id)
     })
 
-    it('starts heist tick loop after countdown completes', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
+    it('transitions room phase to heist immediately', () => {
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
 
-      // Complete planning countdown
-      timers.tickN(61)
-      const broadcastCountBefore = broadcasts.length
+      const r = manager.getRoom(room.id)
+      expect(r?.phase).toBe('heist')
+    })
 
-      // Tick the heist loop once
+    it('starts heist tick loop — broadcasts game_state_tick on each tick', () => {
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
+
+      const before = broadcasts.length
       timers.tick()
 
       const heistTicks = broadcasts
-        .slice(broadcastCountBefore)
+        .slice(before)
         .filter(b => b.msg.type === 'game_state_tick')
       expect(heistTicks.length).toBeGreaterThan(0)
     })
@@ -191,15 +133,15 @@ describe('GameSessionManager', () => {
 
   describe('stopRoom', () => {
     it('removes the session', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
       sessions.stopRoom(room.id)
       expect(sessions.getSession(room.id)).toBeUndefined()
     })
 
     it('clears the active timer', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
       expect(timers.activeCount()).toBe(1)
 
       sessions.stopRoom(room.id)
@@ -211,8 +153,8 @@ describe('GameSessionManager', () => {
     })
 
     it('stops broadcasting after stopRoom', () => {
-      const { room } = makePlanningRoom(manager)
-      sessions.startPlanning(room.id)
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
       sessions.stopRoom(room.id)
 
       const before = broadcasts.length

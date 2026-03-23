@@ -1,7 +1,7 @@
 import type { GameState } from '@heist/shared'
 import { LOOT_TO_WIN } from '@heist/shared'
 
-export interface WinResult {
+interface WinResult {
   winner: 'thieves' | 'security'
   reason: string
 }
@@ -32,11 +32,11 @@ export function checkWinConditions(state: GameState): WinResult | null {
     }
   }
 
-  // ── 2. Timer expires ──────────────────────────────────────────────────────
-  if (state.alarmTriggered && state.lockdownTicksRemaining <= 0) {
+  // ── 2. Heist timer expires ────────────────────────────────────────────────
+  if (state.heistTicksRemaining <= 0) {
     return {
       winner: 'security',
-      reason: 'Lockdown expired — authorities have arrived',
+      reason: 'Time is up — authorities have arrived',
     }
   }
 

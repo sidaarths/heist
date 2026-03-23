@@ -10,8 +10,14 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
 
 function isOriginAllowed(origin: string): boolean {
   return ALLOWED_ORIGINS.some(pattern => {
-    if (pattern.startsWith('*')) return origin.endsWith(pattern.slice(1))
-    return pattern === origin
+    if (!pattern.startsWith('*.')) return pattern === origin
+    // Wildcard: *.example.com — must match exactly one subdomain label before the suffix.
+    // "*.example.com" matches "foo.example.com" but NOT "example.com" or "evil.notexample.com".
+    const suffix = pattern.slice(1) // ".example.com"
+    if (!origin.endsWith(suffix)) return false
+    const prefix = origin.slice(0, origin.length - suffix.length)
+    // prefix must be a single non-empty label (no dots)
+    return prefix.length > 0 && !prefix.includes('.')
   })
 }
 

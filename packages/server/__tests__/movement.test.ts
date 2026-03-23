@@ -84,7 +84,8 @@ function makeState(overrides?: Partial<PlayerPosition>): GameState {
     exit: { x: 3, y: 3 },
     tick: 0,
     alarmTriggered: false,
-    lockdownTicksRemaining: 1800,
+    heistTicksRemaining: 6000,
+    preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
   }

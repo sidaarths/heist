@@ -1,5 +1,5 @@
 import type { ClientMessage, ServerMessage, PlayerRole } from '@heist/shared'
-import { CHAT_MESSAGE_MAX_LEN } from '@heist/shared'
+import { CHAT_MESSAGE_MAX_LEN, TARGET_ID_MAX_LEN } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 import type { GameSessionManager } from '../game/session-manager'
 
@@ -246,8 +246,8 @@ export class MessageRouter {
       return
     }
 
-    if (room.phase !== 'planning') {
-      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Chat is only available during the planning phase.' })
+    if (room.phase !== 'planning' && room.phase !== 'heist') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Chat is only available during planning or heist.' })
       return
     }
 
@@ -303,7 +303,11 @@ export class MessageRouter {
     respond: Responder,
   ): void {
     const validActions = ['pick_lock', 'destroy_camera', 'disable_alarm', 'take_loot', 'drop_loot']
-    if (!validActions.includes(message.action) || typeof message.targetId !== 'string') {
+    if (
+      !validActions.includes(message.action) ||
+      typeof message.targetId !== 'string' ||
+      message.targetId.length > TARGET_ID_MAX_LEN
+    ) {
       respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'Invalid player_action.' })
       return
     }
@@ -362,7 +366,12 @@ export class MessageRouter {
     const session = this.sessionManager?.getSession(room.id)
     if (!session) return
 
-    session.engine.handleSecurityAction(playerId, message.action, message.targetId, message.patrolPath)
+    const targetId = message.targetId
+    if (targetId !== undefined && (typeof targetId !== 'string' || targetId.length > TARGET_ID_MAX_LEN)) {
+      respond({ type: 'error', code: 'INVALID_MESSAGE', message: 'Invalid targetId.' })
+      return
+    }
+    session.engine.handleSecurityAction(playerId, message.action, targetId, message.patrolPath)
   }
 
   private handleResetRoom(playerId: string, respond: Responder): void {
@@ -376,6 +385,15 @@ export class MessageRouter {
       respond({ type: 'error', code: 'NOT_HOST', message: 'Only the host can reset the room.' })
       return
     }
+
+    // Only allow reset from lobby or resolution — not mid-heist (prevents win-denial abuse)
+    if (room.phase !== 'lobby' && room.phase !== 'resolution') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Cannot reset the room during an active heist.' })
+      return
+    }
+
+    // Stop any active game session (clears tick interval) before mutating phase
+    this.sessionManager?.stopRoom(room.id)
 
     // Reset room phase to lobby and unready all players
     room.phase = 'lobby'

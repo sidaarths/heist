@@ -1,6 +1,6 @@
 import type { GameState, ServerMessage } from '@heist/shared'
 import type { MapDef } from '@heist/shared'
-import { BASE_MOVE_SPEED, REPLAY_BUFFER_MAX } from '@heist/shared'
+import { BASE_MOVE_SPEED, REPLAY_BUFFER_MAX, ALARM_LOCKDOWN_TICKS, MAX_PATROL_WAYPOINTS } from '@heist/shared'
 import { applyPlayerMove } from './movement'
 import {
   startInteraction,
@@ -27,6 +27,7 @@ type BroadcastFn = (msg: ServerMessage) => void
 export class GameEngine {
   replayBuffer: GameState[] = []
   private broadcast: BroadcastFn
+  private onGameOver: (() => void) | undefined
 
   /** Active thief interactions (pick lock, destroy camera, disable alarm) */
   private interactions: InteractionMap = new Map()
@@ -36,9 +37,11 @@ export class GameEngine {
   constructor(
     private state: GameState,
     private map: MapDef,
-    broadcast: BroadcastFn = () => {}
+    broadcast: BroadcastFn = () => {},
+    onGameOver?: () => void,
   ) {
     this.broadcast = broadcast
+    this.onGameOver = onGameOver
   }
 
   advanceTick(): void {
@@ -48,6 +51,12 @@ export class GameEngine {
     tickGuardCollisions(this.state)
     tickInteractions(this.state, this.interactions)
     tickSecurityCooldowns(this.state, this.cooldowns)
+    this.tickCameraDetection()
+
+    // Decrement global heist timer
+    if (this.state.heistTicksRemaining > 0) {
+      this.state.heistTicksRemaining--
+    }
 
     this.state.tick++
 
@@ -55,7 +64,11 @@ export class GameEngine {
     const result = checkWinConditions(this.state)
     if (result) {
       this.state.room.phase = 'resolution'
+      // Clean up transient alarm state before broadcasting final snapshot
+      this.state.preAlarmTicksRemaining = null
       this.broadcast({ type: 'game_over', winner: result.winner, reason: result.reason })
+      // Stop the tick loop — session manager clears the interval
+      this.onGameOver?.()
     }
 
     // Bounded replay buffer — keep only the last REPLAY_BUFFER_MAX snapshots
@@ -63,15 +76,6 @@ export class GameEngine {
       this.replayBuffer.shift()
     }
     this.replayBuffer.push(structuredClone(this.state))
-  }
-
-  tickPlanningSecond(secondsRemaining: number): void {
-    this.broadcast({ type: 'planning_tick', secondsRemaining })
-
-    if (secondsRemaining === 0) {
-      this.state.room.phase = 'heist'
-      this.broadcast({ type: 'game_start', gameState: this.state })
-    }
   }
 
   /**
@@ -136,8 +140,58 @@ export class GameEngine {
         handleCutLights(this.state, playerId, this.cooldowns)
         break
       case 'release_guard':
-        if (patrolPath) handleReleaseGuard(this.state, playerId, patrolPath)
+        if (patrolPath) {
+          // Cap waypoint count, then validate bounds before spawning
+          const validPath = patrolPath
+            .slice(0, MAX_PATROL_WAYPOINTS)
+            .filter(
+              wp => Number.isFinite(wp.x) && Number.isFinite(wp.y) &&
+                    wp.x >= 0 && wp.x < this.map.width &&
+                    wp.y >= 0 && wp.y < this.map.height,
+            )
+          if (validPath.length >= 2) handleReleaseGuard(this.state, playerId, validPath, this.cooldowns)
+        }
         break
+    }
+  }
+
+  /**
+   * Check if any thief has entered an active camera's FOV.
+   * If so, trigger the alarm (same logic as handleTriggerAlarm).
+   */
+  private tickCameraDetection(): void {
+    if (this.state.alarmTriggered) return // alarm already active
+
+    const thiefIds = new Set(
+      this.state.room.players.filter(p => p.role === 'thief').map(p => p.id),
+    )
+
+    for (const cam of this.state.cameras) {
+      if (cam.destroyed) continue
+
+      for (const pos of this.state.playerPositions) {
+        if (!thiefIds.has(pos.playerId)) continue
+
+        const dx = pos.x - cam.x
+        const dy = pos.y - cam.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+
+        if (dist > 2.5) continue // outside FOV range
+
+        const angle = Math.atan2(dy, dx)
+        let diff = Math.abs(angle - cam.angle)
+        if (diff > Math.PI) diff = Math.abs(diff - 2 * Math.PI)
+
+        if (diff <= cam.fov / 2) {
+          // Thief spotted — trigger alarm
+          this.state.alarmTriggered = true
+          if (this.state.heistTicksRemaining > ALARM_LOCKDOWN_TICKS) {
+            this.state.preAlarmTicksRemaining = this.state.heistTicksRemaining
+            this.state.heistTicksRemaining = ALARM_LOCKDOWN_TICKS
+          }
+          return
+        }
+      }
     }
   }
 

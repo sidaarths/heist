@@ -22,9 +22,7 @@ export type ServerMessage =
   | { type: 'room_state'; room: GameRoom }
   | { type: 'phase_change'; phase: GamePhase }
   | { type: 'error'; code: string; message: string }
-  | { type: 'planning_start'; gameState: GameState }
   | { type: 'game_start'; gameState: GameState }
   | { type: 'game_state_tick'; gameState: GameState; tick: number }
   | { type: 'game_over'; winner: 'thieves' | 'security'; reason: string }
   | { type: 'chat_message'; fromId: string; fromName: string; message: string }
-  | { type: 'planning_tick'; secondsRemaining: number }
