@@ -1,14 +1,39 @@
 import type { GameState, ServerMessage } from '@heist/shared'
-import { BASIC_MAP, PLANNING_DURATION_MS, TICK_MS } from '@heist/shared'
+import { getRandomMap, TICK_MS, THIEF_VISION_TILES } from '@heist/shared'
+import type { MapDef } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 import { initGameState } from './map-init'
 import { GameEngine } from './game-engine'
 
 type BroadcastFn = (roomId: string, msg: ServerMessage) => void
+type SendToPlayerFn = (playerId: string, msg: ServerMessage) => void
+
+/**
+ * Returns a shallow copy of game state with playerPositions filtered to what
+ * the given player can see. Security sees all; thieves only see players within
+ * their fog-of-war vision radius.
+ */
+function filterStateForPlayer(state: GameState, playerId: string): GameState {
+  const player = state.room.players.find(p => p.id === playerId)
+  if (!player || player.role === 'security') return state
+
+  const myPos = state.playerPositions.find(p => p.playerId === playerId)
+  if (!myPos) return state
+
+  const visiblePositions = state.playerPositions.filter(pos => {
+    if (pos.playerId === playerId) return true
+    const dx = pos.x - myPos.x
+    const dy = pos.y - myPos.y
+    return Math.sqrt(dx * dx + dy * dy) <= THIEF_VISION_TILES
+  })
+
+  return { ...state, playerPositions: visiblePositions }
+}
 
 interface Session {
   engine: GameEngine
   state: GameState
+  map: MapDef
   timer: ReturnType<typeof setInterval> | null
 }
 
@@ -18,63 +43,59 @@ export class GameSessionManager {
   constructor(
     private manager: RoomManager,
     private broadcast: BroadcastFn,
+    private sendToPlayer?: SendToPlayerFn,
   ) {}
 
   /**
-   * Called when a room transitions to 'planning'. Initialises game state,
-   * creates the engine, and starts the 1s planning countdown.
+   * Called when a room is ready to start. Skips planning entirely —
+   * picks a random map, initialises game state, sets phase to 'heist',
+   * and broadcasts game_start immediately.
    */
-  startPlanning(roomId: string): void {
+  startGame(roomId: string): void {
     if (this.sessions.has(roomId)) return
 
     const room = this.manager.getRoom(roomId)
-    if (!room || room.phase !== 'planning') return
+    if (!room) return
 
-    const state = initGameState(room, BASIC_MAP)
+    const map = getRandomMap()
+    const state = initGameState(room, map)
 
-    const engine = new GameEngine(state, BASIC_MAP, (msg) =>
-      this.broadcast(roomId, msg),
+    // Create session placeholder first so onGameOver can reference it via stopRoom
+    const session: Session = { engine: null!, state, map, timer: null }
+    this.sessions.set(roomId, session)
+
+    const engine = new GameEngine(
+      state,
+      map,
+      (msg) => this.broadcast(roomId, msg),
+      () => this.stopRoom(roomId), // clears the interval when game_over fires
     )
+    session.engine = engine
 
-    const totalSeconds = Math.floor(PLANNING_DURATION_MS / 1000)
-    let secondsRemaining = totalSeconds
+    // Transition to heist immediately
+    room.phase = 'heist'
+    state.room.phase = 'heist'
+
+    this.broadcast(roomId, { type: 'game_start', gameState: state })
 
     const timer = setInterval(() => {
-      engine.tickPlanningSecond(secondsRemaining)
-
-      if (secondsRemaining === 0) {
-        clearInterval(timer)
-        session.timer = null
-        this.startHeist(roomId)
+      engine.advanceTick()
+      // Send a per-player filtered view to prevent fog-of-war bypass via raw WS frames
+      if (this.sendToPlayer) {
+        for (const player of state.room.players) {
+          this.sendToPlayer(player.id, {
+            type: 'game_state_tick',
+            gameState: filterStateForPlayer(state, player.id),
+            tick: state.tick,
+          })
+        }
       } else {
-        secondsRemaining--
+        // Fallback for tests that don't provide sendToPlayer
+        this.broadcast(roomId, { type: 'game_state_tick', gameState: state, tick: state.tick })
       }
-    }, 1000)
-
-    const session: Session = { engine, state, timer }
-    this.sessions.set(roomId, session)
-  }
-
-  /**
-   * Called when planning countdown reaches 0. Starts the 20 tps heist tick loop.
-   */
-  private startHeist(roomId: string): void {
-    const session = this.sessions.get(roomId)
-    if (!session) return
-
-    // Sync room phase on the manager's room object
-    const room = this.manager.getRoom(roomId)
-    if (room) room.phase = 'heist'
-    session.state.room.phase = 'heist'
-
-    session.timer = setInterval(() => {
-      session.engine.advanceTick()
-      this.broadcast(roomId, {
-        type: 'game_state_tick',
-        gameState: session.state,
-        tick: session.state.tick,
-      })
     }, TICK_MS)
+
+    session.timer = timer
   }
 
   stopRoom(roomId: string): void {

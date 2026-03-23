@@ -1,6 +1,5 @@
 import { signal, computed } from '@preact/signals'
 import type { GameRoom, GameState, PlayerInfo } from '@heist/shared'
-import { PLANNING_DURATION_MS } from '@heist/shared'
 
 // Connection state
 export const wsConnected = signal<boolean>(false)
@@ -32,11 +31,8 @@ export const isSecurityTaken = computed<boolean>(() => {
 // Game state (set when game_start received)
 export const currentGameState = signal<GameState | null>(null)
 
-// Planning phase countdown — initialised from the shared constant so it stays in sync
-export const planningSecondsRemaining = signal<number>(Math.floor(PLANNING_DURATION_MS / 1000))
-
 // Thief chat messages (thieves only)
-export interface ChatEntry { fromName: string; message: string; id: number }
+interface ChatEntry { fromName: string; message: string; id: number }
 export const chatMessages = signal<ChatEntry[]>([])
 let chatSeq = 0
 const MAX_CHAT_DISPLAY = 200
@@ -48,6 +44,25 @@ export function addChatMessage(fromName: string, message: string): void {
 export function clearChatMessages(): void {
   chatMessages.value = []
   chatSeq = 0
+}
+
+// ─── Game-over / result state ─────────────────────────────────────────────────
+interface GameOverResult {
+  winner: 'thieves' | 'security'
+  reason: string
+}
+
+export const gameOverResult = signal<GameOverResult | null>(null)
+
+export function handleGameOver(winner: 'thieves' | 'security', reason: string): void {
+  gameOverResult.value = { winner, reason }
+  if (currentRoom.value) {
+    currentRoom.value = { ...currentRoom.value, phase: 'resolution' }
+  }
+}
+
+export function clearGameOver(): void {
+  gameOverResult.value = null
 }
 
 // UI state

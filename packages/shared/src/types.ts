@@ -77,6 +77,8 @@ export interface ExitPoint {
 
 export interface GameState {
   room: GameRoom
+  /** Which map is loaded — used by clients to look up the MapDef. */
+  mapId: string
   loot: LootItem[]
   doors: Door[]
   cameras: Camera[]
@@ -86,7 +88,10 @@ export interface GameState {
   exit: ExitPoint
   tick: number
   alarmTriggered: boolean
-  lockdownTicksRemaining: number
+  /** Global heist countdown (ticks). Security wins when this hits 0. */
+  heistTicksRemaining: number
+  /** Saved timer value before alarm reduced it — restored when alarm is disabled. */
+  preAlarmTicksRemaining: number | null
   lightsOut: boolean
   lightsOutRemainingTicks: number
 }

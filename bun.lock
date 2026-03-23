@@ -6,6 +6,7 @@
       "name": "heist",
       "devDependencies": {
         "concurrently": "^9.2.1",
+        "typescript": "^5.9.3",
       },
     },
     "packages/client": {

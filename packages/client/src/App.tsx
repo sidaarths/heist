@@ -3,11 +3,12 @@ import type { ServerMessage, PlayerInfo } from '@heist/shared'
 import { connection } from './net/connection'
 import {
   currentRoom, myPlayerId,
-  currentGameState, planningSecondsRemaining, addChatMessage,
-  setRoom, setError, clearError,
+  currentGameState, addChatMessage,
+  setRoom, setError, clearError, handleGameOver, clearGameOver, clearChatMessages,
 } from './state/client-state'
 import { Lobby } from './screens/Lobby'
-import { Planning } from './screens/Planning'
+import { Heist } from './screens/Heist'
+import { Result } from './screens/Result'
 
 export function App() {
   const room = currentRoom.value
@@ -28,6 +29,12 @@ export function App() {
           clearError()
           break
         case 'room_state':
+          // When transitioning back to lobby from resolution, clear game state
+          if (msg.room.phase === 'lobby' && currentRoom.value?.phase === 'resolution') {
+            currentGameState.value = null
+            clearGameOver()
+            clearChatMessages()
+          }
           setRoom(msg.room)
           break
         case 'player_updated':
@@ -62,8 +69,8 @@ export function App() {
         case 'game_state_tick':
           currentGameState.value = msg.gameState
           break
-        case 'planning_tick':
-          planningSecondsRemaining.value = msg.secondsRemaining
+        case 'game_over':
+          handleGameOver(msg.winner, msg.reason)
           break
         case 'chat_message':
           addChatMessage(msg.fromName, msg.message)
@@ -77,10 +84,14 @@ export function App() {
     return unsub
   }, [])
 
-  if (phase === 'planning') {
-    return <Planning />
+  if (phase === 'heist') {
+    return <Heist />
   }
 
-  // lobby, null, and future phases all fall through to Lobby for now
+  if (phase === 'resolution') {
+    return <Result />
+  }
+
+  // lobby, null, and future phases all fall through to Lobby
   return <Lobby />
 }
