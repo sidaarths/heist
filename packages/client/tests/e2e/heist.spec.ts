@@ -121,10 +121,11 @@ twoPlayerTest.describe('Heist screen', () => {
 
       await startHeistPhase(pageA, pageB)
 
-      // Click to ensure canvas has focus, then press W
+      // Click to ensure canvas has focus, then hold W long enough for the 50ms tick loop to fire
       await pageB.getByTestId('heist-canvas').click()
-      await pageB.keyboard.press('w')
+      await pageB.keyboard.down('w')
       await pageB.waitForTimeout(200)
+      await pageB.keyboard.up('w')
 
       const moveMsgs = parsedFrames(framesB).filter(m => m?.type === 'player_move')
       expect(moveMsgs.length).toBeGreaterThan(0)
@@ -140,8 +141,9 @@ twoPlayerTest.describe('Heist screen', () => {
       await startHeistPhase(pageA, pageB)
 
       await pageB.getByTestId('heist-canvas').click()
-      await pageB.keyboard.press('w')
+      await pageB.keyboard.down('w')
       await pageB.waitForTimeout(200)
+      await pageB.keyboard.up('w')
 
       const move = parsedFrames(frames).find(m => m?.type === 'player_move' && m.dy === -1)
       expect(move).toBeDefined()
@@ -157,8 +159,9 @@ twoPlayerTest.describe('Heist screen', () => {
       await startHeistPhase(pageA, pageB)
 
       await pageB.getByTestId('heist-canvas').click()
-      await pageB.keyboard.press('s')
+      await pageB.keyboard.down('s')
       await pageB.waitForTimeout(200)
+      await pageB.keyboard.up('s')
 
       const move = parsedFrames(frames).find(m => m?.type === 'player_move' && m.dy === 1)
       expect(move).toBeDefined()
@@ -174,8 +177,9 @@ twoPlayerTest.describe('Heist screen', () => {
       await startHeistPhase(pageA, pageB)
 
       await pageB.getByTestId('heist-canvas').click()
-      await pageB.keyboard.press('a')
+      await pageB.keyboard.down('a')
       await pageB.waitForTimeout(200)
+      await pageB.keyboard.up('a')
 
       const move = parsedFrames(frames).find(m => m?.type === 'player_move' && m.dx === -1)
       expect(move).toBeDefined()
@@ -191,8 +195,9 @@ twoPlayerTest.describe('Heist screen', () => {
       await startHeistPhase(pageA, pageB)
 
       await pageB.getByTestId('heist-canvas').click()
-      await pageB.keyboard.press('d')
+      await pageB.keyboard.down('d')
       await pageB.waitForTimeout(200)
+      await pageB.keyboard.up('d')
 
       const move = parsedFrames(frames).find(m => m?.type === 'player_move' && m.dx === 1)
       expect(move).toBeDefined()
@@ -251,18 +256,14 @@ twoPlayerTest.describe('Security toolbar', () => {
   )
 
   twoPlayerTest(
-    'Lock Door button sends security_action lock_door message',
+    'Lock Door button activates targeting mode',
     { timeout: 30_000 },
     async ({ pageA, pageB }) => {
-      const { frames } = collectWsFrames(pageA)
-
       await startHeistPhase(pageA, pageB)
 
+      // Clicking the button enters targeting mode — button shows CLICK MAP prompt
       await pageA.getByTestId('btn-lock-door').click()
-      await pageA.waitForTimeout(200)
-
-      const msg = parsedFrames(frames).find(m => m?.type === 'security_action' && m.action === 'lock_door')
-      expect(msg).toBeDefined()
+      await expect(pageA.getByTestId('btn-lock-door')).toContainText('CLICK MAP', { timeout: 3_000 })
     },
   )
 
@@ -274,7 +275,16 @@ twoPlayerTest.describe('Security toolbar', () => {
 
       await startHeistPhase(pageA, pageB)
 
+      // Enter targeting mode
       await pageA.getByTestId('btn-release-guard').click()
+      await expect(pageA.getByTestId('btn-release-guard')).toContainText('CLICK MAP', { timeout: 3_000 })
+
+      // Add a waypoint by clicking anywhere on the canvas
+      const canvas = pageA.getByTestId('heist-canvas')
+      await canvas.click({ position: { x: 200, y: 200 } })
+
+      // Deploy guard via the DEPLOY GUARD button that appears after setting waypoints
+      await pageA.getByTestId('btn-send-guard').click()
       await pageA.waitForTimeout(200)
 
       const msg = parsedFrames(frames).find(m => m?.type === 'security_action' && m.action === 'release_guard')
