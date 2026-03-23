@@ -45,6 +45,11 @@ function makeTestMap(): MapDef {
       security: [{ x: 5, y: 5 }],
       thieves: [{ x: 3, y: 3 }],
     },
+    doorDefs: [],
+    cameraDefs: [],
+    exitPosition: { x: 5, y: 5 },
+    lootRoomIds: [],
+    alarmRoomIds: [],
   }
 }
 
@@ -88,6 +93,7 @@ function makeState(overrides?: Partial<PlayerPosition>): GameState {
     preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
+    mapId: 'test',
   }
 }
 

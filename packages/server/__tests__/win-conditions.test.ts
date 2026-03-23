@@ -64,6 +64,7 @@ function makeState(overrides?: {
     preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
+    mapId: 'test',
   }
 }
 
