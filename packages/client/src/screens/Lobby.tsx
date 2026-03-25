@@ -97,6 +97,21 @@ export function Lobby() {
   const [copied,     setCopied]     = useState(false)
   const copyTimer                   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Auto-fill join code from ?room=XXXXXX URL parameter.
+  // Validate against the same alphanumeric pattern the server enforces so
+  // a crafted URL can never inject arbitrary bytes into the join message.
+  useEffect(() => {
+    const ROOM_CODE_RE = /^[A-Z0-9]{6}$/
+    const params = new URLSearchParams(window.location.search)
+    const raw = params.get('room')
+    if (!raw) return
+    const normalised = raw.toUpperCase()
+    if (ROOM_CODE_RE.test(normalised)) {
+      setJoinCode(normalised)
+      setJoinMode(true)
+    }
+  }, [])
+
   const room     = currentRoom.value
   const me       = myPlayer.value
   const error    = errorMessage.value
@@ -153,7 +168,8 @@ export function Lobby() {
 
   function handleCopyCode() {
     if (!room) return
-    navigator.clipboard.writeText(room.id).then(() => {
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${room.id}`
+    navigator.clipboard.writeText(inviteUrl).then(() => {
       setCopied(true)
       if (copyTimer.current) clearTimeout(copyTimer.current)
       copyTimer.current = setTimeout(() => setCopied(false), 1800)
@@ -267,7 +283,7 @@ export function Lobby() {
           >
             {room.id}
             <div style={{ fontSize: '13px', letterSpacing: '2px', marginTop: '6px', fontFamily: "'VT323', monospace", opacity: 0.7 }}>
-              {copied ? '✓ COPIED' : 'CLICK TO COPY'}
+              {copied ? '✓ INVITE LINK COPIED' : 'CLICK TO COPY INVITE LINK'}
             </div>
           </div>
 

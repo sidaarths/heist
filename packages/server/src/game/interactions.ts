@@ -4,7 +4,8 @@ import {
   DESTROY_CAMERA_TICKS,
   DISABLE_ALARM_TICKS,
   ALARM_LOCKDOWN_TICKS,
-  LOOT_COUNT_MAX,
+  MAX_LOOT_CARRY,
+  AUTO_PICKUP_RADIUS,
 } from '@heist/shared'
 
 /**
@@ -162,8 +163,8 @@ export function handleTakeLoot(
   const pos = state.playerPositions.find(p => p.playerId === playerId)
   if (!pos) return
 
-  // Defence-in-depth: cap carried items to prevent unbounded lootCarried array
-  if (pos.lootCarried.length >= LOOT_COUNT_MAX) return
+  // Cap carried items: thieves only need MAX_LOOT_CARRY (= LOOT_TO_WIN) to win
+  if (pos.lootCarried.length >= MAX_LOOT_CARRY) return
 
   // Proximity check (Euclidean)
   const ldx = pos.x - lootItem.x
@@ -173,6 +174,35 @@ export function handleTakeLoot(
   lootItem.carried = true
   lootItem.carriedBy = playerId
   pos.lootCarried.push(lootId)
+}
+
+/**
+ * Auto-pickup: each non-frozen thief automatically collects unclaimed loot
+ * within AUTO_PICKUP_RADIUS tiles. At most one item per thief per tick.
+ * Respects MAX_LOOT_CARRY cap.
+ */
+export function autoPickupLoot(state: GameState): void {
+  const thiefIds = new Set(
+    state.room.players.filter(p => p.role === 'thief').map(p => p.id),
+  )
+
+  for (const pos of state.playerPositions) {
+    if (!thiefIds.has(pos.playerId)) continue
+    if (pos.frozen) continue
+    if (pos.lootCarried.length >= MAX_LOOT_CARRY) continue
+
+    for (const lootItem of state.loot) {
+      if (lootItem.carried) continue
+      const dx = pos.x - lootItem.x
+      const dy = pos.y - lootItem.y
+      if (Math.sqrt(dx * dx + dy * dy) <= AUTO_PICKUP_RADIUS) {
+        lootItem.carried = true
+        lootItem.carriedBy = pos.playerId
+        pos.lootCarried.push(lootItem.id)
+        break // one item per thief per tick
+      }
+    }
+  }
 }
 
 /** Drop loot at player's current position. */

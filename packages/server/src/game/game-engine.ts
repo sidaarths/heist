@@ -7,6 +7,7 @@ import {
   tickInteractions,
   handleTakeLoot,
   handleDropLoot,
+  autoPickupLoot,
   type InteractionMap,
 } from './interactions'
 import {
@@ -52,6 +53,7 @@ export class GameEngine {
     tickInteractions(this.state, this.interactions)
     tickSecurityCooldowns(this.state, this.cooldowns)
     this.tickCameraDetection()
+    autoPickupLoot(this.state)
 
     // Decrement global heist timer
     if (this.state.heistTicksRemaining > 0) {

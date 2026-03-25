@@ -93,6 +93,7 @@ function makeState(overrides?: Partial<PlayerPosition>): GameState {
     preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
+    cutLightsUsesRemaining: 3,
     mapId: 'test',
   }
 }

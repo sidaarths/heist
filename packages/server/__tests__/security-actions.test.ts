@@ -20,6 +20,7 @@ import type {
 import {
   COOLDOWN_LOCK_DOOR_TICKS,
   CUT_LIGHTS_DURATION_TICKS,
+  CUT_LIGHTS_MAX_USES,
   HEIST_DURATION_TICKS,
   ALARM_LOCKDOWN_TICKS,
   FREEZE_DURATION_TICKS,
@@ -64,6 +65,7 @@ function makeState(overrides?: {
     preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
+    cutLightsUsesRemaining: 3,
     mapId: 'test',
   }
 }
@@ -214,6 +216,45 @@ describe('security-actions — cut_lights', () => {
 
     expect(state.lightsOut).toBe(false)
     expect(state.lightsOutRemainingTicks).toBe(0)
+  })
+
+  it('decrements cutLightsUsesRemaining on each successful use', () => {
+    const state = makeState()
+    const cooldowns: Cooldowns = new Map()
+
+    expect(state.cutLightsUsesRemaining).toBe(CUT_LIGHTS_MAX_USES)
+    handleCutLights(state, 'sec1', cooldowns)
+    expect(state.cutLightsUsesRemaining).toBe(CUT_LIGHTS_MAX_USES - 1)
+  })
+
+  it('blocks cut_lights when cutLightsUsesRemaining is 0', () => {
+    const state = makeState()
+    state.cutLightsUsesRemaining = 0
+    const cooldowns: Cooldowns = new Map()
+
+    handleCutLights(state, 'sec1', cooldowns)
+
+    expect(state.lightsOut).toBe(false)
+    expect(state.cutLightsUsesRemaining).toBe(0)
+  })
+
+  it('allows exactly CUT_LIGHTS_MAX_USES uses then blocks', () => {
+    const state = makeState()
+
+    for (let use = 0; use < CUT_LIGHTS_MAX_USES; use++) {
+      const cooldowns: Cooldowns = new Map() // fresh cooldown map each time
+      // Reset lights between uses
+      state.lightsOut = false
+      handleCutLights(state, 'sec1', cooldowns)
+      expect(state.lightsOut).toBe(true)
+    }
+
+    // One extra attempt — should be blocked
+    state.lightsOut = false
+    const cooldowns: Cooldowns = new Map()
+    handleCutLights(state, 'sec1', cooldowns)
+    expect(state.lightsOut).toBe(false)
+    expect(state.cutLightsUsesRemaining).toBe(0)
   })
 })
 

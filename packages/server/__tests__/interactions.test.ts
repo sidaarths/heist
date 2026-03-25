@@ -5,6 +5,7 @@ import {
   tickInteractions,
   handleTakeLoot,
   handleDropLoot,
+  autoPickupLoot,
 } from '../src/game/interactions'
 import type { GameState, GameRoom, PlayerPosition, Door, Camera, AlarmPanel, LootItem } from '@heist/shared'
 import {
@@ -12,6 +13,8 @@ import {
   DESTROY_CAMERA_TICKS,
   DISABLE_ALARM_TICKS,
   HEIST_DURATION_TICKS,
+  AUTO_PICKUP_RADIUS,
+  MAX_LOOT_CARRY,
 } from '@heist/shared'
 
 function makeRoom(): GameRoom {
@@ -61,6 +64,7 @@ function makeBaseState(overrides?: {
     preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
+    cutLightsUsesRemaining: 3,
     mapId: 'test',
   }
 }
@@ -417,5 +421,88 @@ describe('tickInteractions — edge cases', () => {
     expect(interactions.has('thief1')).toBe(false)
     // Door must remain locked
     expect(door.locked).toBe(true)
+  })
+})
+
+// ─── autoPickupLoot ───────────────────────────────────────────────────────────
+
+function makeLoot(id: string, x: number, y: number, carried = false): LootItem {
+  return { id, x, y, value: 1, weight: 1, carried, carriedBy: carried ? 'other' : null }
+}
+
+describe('autoPickupLoot', () => {
+  it('auto-picks loot within AUTO_PICKUP_RADIUS for a nearby thief', () => {
+    const loot = makeLoot('l1', 5.3, 5.0) // within 0.8 tiles of (5,5)
+    const state = makeBaseState({ loot: [loot] })
+
+    autoPickupLoot(state)
+
+    const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+    expect(pos.lootCarried).toContain('l1')
+    expect(loot.carried).toBe(true)
+    expect(loot.carriedBy).toBe('thief1')
+  })
+
+  it('does NOT auto-pick loot beyond AUTO_PICKUP_RADIUS', () => {
+    const loot = makeLoot('l1', 5 + AUTO_PICKUP_RADIUS + 0.1, 5.0) // just outside radius
+    const state = makeBaseState({ loot: [loot] })
+
+    autoPickupLoot(state)
+
+    const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+    expect(pos.lootCarried).not.toContain('l1')
+    expect(loot.carried).toBe(false)
+  })
+
+  it('skips frozen thieves', () => {
+    const loot = makeLoot('l1', 5.0, 5.0)
+    const state = makeBaseState({ loot: [loot], playerPos: { frozen: true } })
+
+    autoPickupLoot(state)
+
+    expect(loot.carried).toBe(false)
+  })
+
+  it('skips thieves already at MAX_LOOT_CARRY', () => {
+    const loot = makeLoot('l1', 5.0, 5.0)
+    const fullCarry = Array.from({ length: MAX_LOOT_CARRY }, (_, i) => `existing${i}`)
+    const state = makeBaseState({ loot: [loot], playerPos: { lootCarried: fullCarry } })
+
+    autoPickupLoot(state)
+
+    expect(loot.carried).toBe(false)
+  })
+
+  it('skips already-carried loot', () => {
+    const loot = makeLoot('l1', 5.0, 5.0, true) // already carried
+    const state = makeBaseState({ loot: [loot] })
+
+    autoPickupLoot(state)
+
+    expect(loot.carriedBy).not.toBe('thief1')
+  })
+
+  it('picks at most one item per thief per call', () => {
+    const loot1 = makeLoot('l1', 5.1, 5.0)
+    const loot2 = makeLoot('l2', 5.2, 5.0)
+    const state = makeBaseState({ loot: [loot1, loot2] })
+
+    autoPickupLoot(state)
+
+    const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+    expect(pos.lootCarried.length).toBe(1)
+  })
+
+  it('does not auto-pick loot for security players', () => {
+    const loot = makeLoot('l1', 5.0, 5.0)
+    const state = makeBaseState({ loot: [loot] })
+    // Add a security-position entry at the same spot
+    state.playerPositions.push({ playerId: 'sec1', x: 5, y: 5, frozen: false, frozenTicksRemaining: 0, lootCarried: [] })
+
+    autoPickupLoot(state)
+
+    // Only thief1 could have picked it up; sec1 must not
+    const secPos = state.playerPositions.find(p => p.playerId === 'sec1')!
+    expect(secPos.lootCarried).toHaveLength(0)
   })
 })

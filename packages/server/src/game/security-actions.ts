@@ -105,9 +105,11 @@ export function handleCutLights(
   cooldowns: SecurityCooldowns,
 ): void {
   if (isOnCooldown(cooldowns, securityPlayerId, 'cut_lights')) return
+  if (state.cutLightsUsesRemaining <= 0) return
 
   state.lightsOut = true
   state.lightsOutRemainingTicks = CUT_LIGHTS_DURATION_TICKS
+  state.cutLightsUsesRemaining--
   applyCooldown(cooldowns, securityPlayerId, 'cut_lights', COOLDOWN_CUT_LIGHTS_TICKS)
 }
 
