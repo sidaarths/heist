@@ -94,8 +94,10 @@ export function Lobby() {
   const [playerName, setPlayerName] = useState('')
   const [joinCode,   setJoinCode]   = useState('')
   const [joinMode,   setJoinMode]   = useState(false)
-  const [copied,     setCopied]     = useState(false)
-  const copyTimer                   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const copyCodeTimer               = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copyLinkTimer               = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auto-fill join code from ?room=XXXXXX URL parameter.
   // Validate against the same alphanumeric pattern the server enforces so
@@ -168,11 +170,20 @@ export function Lobby() {
 
   function handleCopyCode() {
     if (!room) return
+    navigator.clipboard.writeText(room.id).then(() => {
+      setCopiedCode(true)
+      if (copyCodeTimer.current) clearTimeout(copyCodeTimer.current)
+      copyCodeTimer.current = setTimeout(() => setCopiedCode(false), 1800)
+    }).catch(() => setError('CLIPBOARD ACCESS DENIED.'))
+  }
+
+  function handleCopyLink() {
+    if (!room) return
     const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${room.id}`
     navigator.clipboard.writeText(inviteUrl).then(() => {
-      setCopied(true)
-      if (copyTimer.current) clearTimeout(copyTimer.current)
-      copyTimer.current = setTimeout(() => setCopied(false), 1800)
+      setCopiedLink(true)
+      if (copyLinkTimer.current) clearTimeout(copyLinkTimer.current)
+      copyLinkTimer.current = setTimeout(() => setCopiedLink(false), 1800)
     }).catch(() => setError('CLIPBOARD ACCESS DENIED.'))
   }
 
@@ -264,6 +275,7 @@ export function Lobby() {
             <span data-testid="player-count" style={{ ...label, marginBottom: 0 }}>{room.players.length}/5 AGENTS</span>
           </div>
 
+          {/* Room code — click to copy the bare code */}
           <div
             data-testid="room-code"
             class="rcode"
@@ -272,10 +284,10 @@ export function Lobby() {
             onClick={handleCopyCode}
             onKeyDown={(e) => e.key === 'Enter' && handleCopyCode()}
             aria-label={`Copy room code ${room.id}`}
-            title="Click to copy"
+            title="Click to copy code"
             style={{
-              textAlign: 'center', color: copied ? G : R,
-              padding: '14px 10px', marginBottom: '24px',
+              textAlign: 'center', color: copiedCode ? G : R,
+              padding: '14px 10px', marginBottom: '8px',
               background: '#100008', cursor: 'pointer',
               fontSize: '2rem', letterSpacing: '0.35em',
               transition: 'color .2s',
@@ -283,9 +295,26 @@ export function Lobby() {
           >
             {room.id}
             <div style={{ fontSize: '13px', letterSpacing: '2px', marginTop: '6px', fontFamily: "'VT323', monospace", opacity: 0.7 }}>
-              {copied ? '✓ INVITE LINK COPIED' : 'CLICK TO COPY INVITE LINK'}
+              {copiedCode ? '✓ CODE COPIED' : 'CLICK TO COPY CODE'}
             </div>
           </div>
+
+          {/* Invite link button */}
+          <button
+            onClick={handleCopyLink}
+            style={{
+              display: 'block', width: '100%',
+              marginBottom: '24px', padding: '8px',
+              background: 'transparent',
+              border: `1px solid ${copiedLink ? G : 'rgba(200,255,200,0.2)'}`,
+              color: copiedLink ? G : 'rgba(200,255,200,0.55)',
+              fontFamily: "'VT323', monospace",
+              fontSize: '14px', letterSpacing: '2px',
+              cursor: 'pointer', transition: 'color .2s, border-color .2s',
+            }}
+          >
+            {copiedLink ? '✓ INVITE LINK COPIED' : '⎘ COPY INVITE LINK'}
+          </button>
 
           {errorBanner}
 
