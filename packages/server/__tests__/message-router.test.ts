@@ -69,8 +69,8 @@ describe('MessageRouter', () => {
 
     const msgs = send('player-1', { type: 'select_role', role: 'security' })
     expect(msgs).toHaveLength(1)
-    // Should get room_state or player_updated back
-    expect(['room_state', 'player_updated', 'error'].includes(msgs[0].type)).toBe(true)
+    // Should get room_state or error back
+    expect(['room_state', 'error'].includes(msgs[0].type)).toBe(true)
   })
 
   it('routes set_ready message to lobby handler', () => {

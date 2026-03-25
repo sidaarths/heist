@@ -17,8 +17,8 @@ export default defineConfig({
   // so we don't share state between scenarios.
   fullyParallel: true,
 
-  // Heist-phase tests must wait 60s for planning to end before seeing the
-  // heist canvas, and result-screen tests need another 90s for lockdown.
+  // Heist-phase tests run the full heist canvas; result-screen tests need
+  // ~90s for the lockdown countdown to expire.
   // Set the global timeout high enough and let individual tests override downward.
   timeout: 250_000,
 

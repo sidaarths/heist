@@ -39,27 +39,12 @@ export function App() {
           }
           setRoom(msg.room)
           break
-        case 'player_updated':
-          if (currentRoom.value) {
-            const idx = currentRoom.value.players.findIndex((p: PlayerInfo) => p.id === msg.player.id)
-            if (idx >= 0) {
-              const players = [...currentRoom.value.players]
-              players[idx] = msg.player
-              currentRoom.value = { ...currentRoom.value, players }
-            }
-          }
-          break
         case 'player_left':
           if (currentRoom.value) {
             currentRoom.value = {
               ...currentRoom.value,
               players: currentRoom.value.players.filter((p: PlayerInfo) => p.id !== msg.playerId),
             }
-          }
-          break
-        case 'phase_change':
-          if (currentRoom.value) {
-            currentRoom.value = { ...currentRoom.value, phase: msg.phase }
           }
           break
         case 'game_start':
