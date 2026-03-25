@@ -1,5 +1,5 @@
 import { signal, computed } from '@preact/signals'
-import type { GameRoom, GameState, PlayerInfo } from '@heist/shared'
+import type { GameRoom, GameState, PlayerInfo, FinalStats } from '@heist/shared'
 
 // Connection state
 export const wsConnected = signal<boolean>(false)
@@ -50,12 +50,13 @@ export function clearChatMessages(): void {
 interface GameOverResult {
   winner: 'thieves' | 'security'
   reason: string
+  finalStats?: FinalStats
 }
 
 export const gameOverResult = signal<GameOverResult | null>(null)
 
-export function handleGameOver(winner: 'thieves' | 'security', reason: string): void {
-  gameOverResult.value = { winner, reason }
+export function handleGameOver(winner: 'thieves' | 'security', reason: string, finalStats?: FinalStats): void {
+  gameOverResult.value = { winner, reason, finalStats }
   if (currentRoom.value) {
     currentRoom.value = { ...currentRoom.value, phase: 'resolution' }
   }
@@ -64,6 +65,14 @@ export function handleGameOver(winner: 'thieves' | 'security', reason: string): 
 export function clearGameOver(): void {
   gameOverResult.value = null
 }
+
+// ─── Replay state ─────────────────────────────────────────────────────────────
+export const replayBuffer = signal<GameState[]>([])
+
+export function setReplayBuffer(buffer: GameState[]): void {
+  replayBuffer.value = buffer
+}
+
 
 // UI state
 export const errorMessage = signal<string | null>(null)

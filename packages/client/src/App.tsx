@@ -5,10 +5,12 @@ import {
   currentRoom, myPlayerId,
   currentGameState, addChatMessage,
   setRoom, setError, clearError, handleGameOver, clearGameOver, clearChatMessages,
+  setReplayBuffer,
 } from './state/client-state'
 import { Lobby } from './screens/Lobby'
 import { Heist } from './screens/Heist'
 import { Result } from './screens/Result'
+import { Replay } from './screens/Replay'
 
 export function App() {
   const room = currentRoom.value
@@ -70,7 +72,15 @@ export function App() {
           currentGameState.value = msg.gameState
           break
         case 'game_over':
-          handleGameOver(msg.winner, msg.reason)
+          handleGameOver(msg.winner, msg.reason, msg.finalStats)
+          break
+        case 'replay_data':
+          if (Array.isArray(msg.buffer)) {
+            setReplayBuffer(msg.buffer)
+            if (currentRoom.value) {
+              currentRoom.value = { ...currentRoom.value, phase: 'replay' }
+            }
+          }
           break
         case 'chat_message':
           addChatMessage(msg.fromName, msg.message)
@@ -90,6 +100,10 @@ export function App() {
 
   if (phase === 'resolution') {
     return <Result />
+  }
+
+  if (phase === 'replay') {
+    return <Replay />
   }
 
   // lobby, null, and future phases all fall through to Lobby

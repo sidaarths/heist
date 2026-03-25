@@ -162,4 +162,128 @@ describe('GameSessionManager', () => {
       expect(broadcasts.length).toBe(before)
     })
   })
+
+  // ─── stopInterval ────────────────────────────────────────────────────────────
+
+  describe('stopInterval', () => {
+    it('clears the timer but keeps the session entry', () => {
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
+      expect(timers.activeCount()).toBe(1)
+
+      sessions.stopInterval(room.id)
+
+      expect(timers.activeCount()).toBe(0)
+      expect(sessions.getSession(room.id)).toBeDefined()
+    })
+
+    it('is safe to call for an unknown roomId', () => {
+      expect(() => sessions.stopInterval('NO-ROOM')).not.toThrow()
+    })
+  })
+
+  // ─── getReplayBuffer ─────────────────────────────────────────────────────────
+
+  describe('getReplayBuffer', () => {
+    it('returns an empty array for an unknown room', () => {
+      expect(sessions.getReplayBuffer('NO-ROOM')).toEqual([])
+    })
+
+    it('returns the engine replay buffer after ticks', () => {
+      const { room } = makeReadyRoom(manager)
+      sessions.startGame(room.id)
+      timers.tickN(3)
+
+      const buf = sessions.getReplayBuffer(room.id)
+      expect(buf.length).toBe(3)
+    })
+  })
+
+  // ─── sendReplay ──────────────────────────────────────────────────────────────
+
+  describe('sendReplay', () => {
+    it('sends replay_data to the player via sendToPlayer', () => {
+      const sent: Array<{ playerId: string; msg: ServerMessage }> = []
+      const sm = new GameSessionManager(
+        manager,
+        (roomId, msg) => broadcasts.push({ roomId, msg }),
+        (playerId, msg) => sent.push({ playerId, msg }),
+      )
+
+      const { room, hostId } = makeReadyRoom(manager)
+      sm.startGame(room.id)
+      timers.tickN(2)
+
+      sm.sendReplay(room.id, hostId)
+
+      const replayMsg = sent.find(s => s.playerId === hostId && s.msg.type === 'replay_data')
+      expect(replayMsg).toBeDefined()
+    })
+
+    it('is idempotent — repeated calls send only one message', () => {
+      const sent: Array<{ playerId: string; msg: ServerMessage }> = []
+      const sm = new GameSessionManager(
+        manager,
+        (roomId, msg) => broadcasts.push({ roomId, msg }),
+        (playerId, msg) => sent.push({ playerId, msg }),
+      )
+
+      const { room, hostId } = makeReadyRoom(manager)
+      sm.startGame(room.id)
+      timers.tickN(2)
+
+      sm.sendReplay(room.id, hostId)
+      sm.sendReplay(room.id, hostId)
+      sm.sendReplay(room.id, hostId)
+
+      const replayMsgs = sent.filter(s => s.playerId === hostId && s.msg.type === 'replay_data')
+      expect(replayMsgs.length).toBe(1)
+    })
+
+    it('does nothing when sendToPlayer is not provided', () => {
+      const { room, hostId } = makeReadyRoom(manager)
+      sessions.startGame(room.id) // sessions has no sendToPlayer
+      timers.tickN(2)
+
+      // Should not throw
+      expect(() => sessions.sendReplay(room.id, hostId)).not.toThrow()
+    })
+  })
+
+  // ─── filterStateForPlayer (via per-player tick broadcast) ────────────────────
+
+  describe('per-player fog-of-war filtering', () => {
+    it('security player receives all player positions', () => {
+      const perPlayerSent: Array<{ playerId: string; msg: ServerMessage }> = []
+      const sm = new GameSessionManager(
+        manager,
+        (roomId, msg) => broadcasts.push({ roomId, msg }),
+        (playerId, msg) => perPlayerSent.push({ playerId, msg }),
+      )
+
+      const { room, hostId } = makeReadyRoom(manager)
+      sm.startGame(room.id)
+
+      // hostId is security — place guest far away (>THIEF_VISION_TILES)
+      const session = sm.getSession(room.id)!
+      const { guestId } = makeReadyRoom(manager) // we just need an ID
+      // Move guest position far from host in state
+      for (const pos of session.state.playerPositions) {
+        if (pos.playerId !== hostId) {
+          pos.x = 999
+          pos.y = 999
+        }
+      }
+
+      timers.tick()
+
+      const secTick = perPlayerSent.find(
+        s => s.playerId === hostId && s.msg.type === 'game_state_tick',
+      )
+      expect(secTick).toBeDefined()
+      // Security sees all positions including distant ones
+      const gameState = (secTick!.msg as Extract<ServerMessage, { type: 'game_state_tick' }>).gameState
+      expect(gameState.playerPositions.length).toBe(session.state.playerPositions.length)
+    })
+  })
 })

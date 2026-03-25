@@ -252,4 +252,119 @@ describe('MessageRouter', () => {
       expect((out[0] as any).code).toBe('NOT_IN_ROOM')
     })
   })
+
+  // ─── request_replay ──────────────────────────────────────────────────────────
+
+  describe('request_replay', () => {
+    it('returns NOT_IN_ROOM when player is not in a room', () => {
+      const out = send('ghost', { type: 'request_replay' })
+      expect(out[0].type).toBe('error')
+      expect((out[0] as any).code).toBe('NOT_IN_ROOM')
+    })
+
+    it('returns WRONG_PHASE when room is still in heist phase', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      // Room is in lobby — transition it to heist manually
+      const room = manager.getRoom(roomId)!
+      room.phase = 'heist'
+
+      const out = send(hostId, { type: 'request_replay' })
+      expect(out[0].type).toBe('error')
+      expect((out[0] as any).code).toBe('WRONG_PHASE')
+    })
+
+    it('returns WRONG_PHASE when room is in lobby phase', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      // Room stays in lobby phase by default
+      const out = send(hostId, { type: 'request_replay' })
+      expect(out[0].type).toBe('error')
+      expect((out[0] as any).code).toBe('WRONG_PHASE')
+    })
+
+    it('calls sendReplay (no error) when room is in resolution phase', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      const room = manager.getRoom(roomId)!
+      room.phase = 'resolution'
+
+      // sessionManager is not provided to this router, so sendReplay is a no-op — just verify no error response
+      const out = send(hostId, { type: 'request_replay' })
+      const errors = out.filter(m => m.type === 'error')
+      expect(errors).toHaveLength(0)
+    })
+
+    it('calls sendReplay (no error) when room is in replay phase', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      const room = manager.getRoom(roomId)!
+      room.phase = 'replay'
+
+      const out = send(hostId, { type: 'request_replay' })
+      const errors = out.filter(m => m.type === 'error')
+      expect(errors).toHaveLength(0)
+    })
+  })
+
+  // ─── reset_room ──────────────────────────────────────────────────────────────
+
+  describe('reset_room', () => {
+    it('returns NOT_IN_ROOM when player is not in a room', () => {
+      const out = send('ghost', { type: 'reset_room' })
+      expect(out[0].type).toBe('error')
+      expect((out[0] as any).code).toBe('NOT_IN_ROOM')
+    })
+
+    it('returns NOT_HOST when a non-host player tries to reset', () => {
+      const { guestId } = makeReadyRoom(manager, router)
+      const out = send(guestId, { type: 'reset_room' })
+      expect(out[0].type).toBe('error')
+      expect((out[0] as any).code).toBe('NOT_HOST')
+    })
+
+    it('returns WRONG_PHASE when room is in heist phase', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      const room = manager.getRoom(roomId)!
+      room.phase = 'heist'
+
+      const out = send(hostId, { type: 'reset_room' })
+      expect(out[0].type).toBe('error')
+      expect((out[0] as any).code).toBe('WRONG_PHASE')
+    })
+
+    it('resets to lobby when room is in lobby phase', () => {
+      const { hostId } = makeReadyRoom(manager, router)
+      const out = send(hostId, { type: 'reset_room' })
+      expect(out[0].type).toBe('room_state')
+      expect((out[0] as any).room.phase).toBe('lobby')
+    })
+
+    it('resets to lobby when room is in resolution phase', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      const room = manager.getRoom(roomId)!
+      room.phase = 'resolution'
+
+      const out = send(hostId, { type: 'reset_room' })
+      expect(out[0].type).toBe('room_state')
+      expect((out[0] as any).room.phase).toBe('lobby')
+    })
+
+    it('resets to lobby when room is in replay phase', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      const room = manager.getRoom(roomId)!
+      room.phase = 'replay'
+
+      const out = send(hostId, { type: 'reset_room' })
+      expect(out[0].type).toBe('room_state')
+      expect((out[0] as any).room.phase).toBe('lobby')
+    })
+
+    it('unreadies all players on reset', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      const room = manager.getRoom(roomId)!
+      room.phase = 'resolution'
+
+      send(hostId, { type: 'reset_room' })
+
+      const updatedRoom = manager.getRoom(roomId)!
+      expect(updatedRoom.players.every(p => !p.ready)).toBe(true)
+    })
+  })
 })

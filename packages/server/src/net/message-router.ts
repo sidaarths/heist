@@ -47,6 +47,8 @@ export class MessageRouter {
         return this.handleSecurityAction(playerId, message, respond)
       case 'reset_room':
         return this.handleResetRoom(playerId, respond)
+      case 'request_replay':
+        return this.handleRequestReplay(playerId, respond)
       default:
         respond({
           type: 'error',
@@ -374,6 +376,21 @@ export class MessageRouter {
     session.engine.handleSecurityAction(playerId, message.action, targetId, message.patrolPath)
   }
 
+  private handleRequestReplay(playerId: string, respond: Responder): void {
+    const room = this.manager.getRoomForPlayer(playerId)
+    if (!room) {
+      respond({ type: 'error', code: 'NOT_IN_ROOM', message: 'You are not currently in a room.' })
+      return
+    }
+
+    if (room.phase !== 'resolution' && room.phase !== 'replay') {
+      respond({ type: 'error', code: 'WRONG_PHASE', message: 'Replay is only available after the game ends.' })
+      return
+    }
+
+    this.sessionManager?.sendReplay(room.id, playerId)
+  }
+
   private handleResetRoom(playerId: string, respond: Responder): void {
     const room = this.manager.getRoomForPlayer(playerId)
     if (!room) {
@@ -387,7 +404,7 @@ export class MessageRouter {
     }
 
     // Only allow reset from lobby or resolution — not mid-heist (prevents win-denial abuse)
-    if (room.phase !== 'lobby' && room.phase !== 'resolution') {
+    if (room.phase !== 'lobby' && room.phase !== 'resolution' && room.phase !== 'replay') {
       respond({ type: 'error', code: 'WRONG_PHASE', message: 'Cannot reset the room during an active heist.' })
       return
     }

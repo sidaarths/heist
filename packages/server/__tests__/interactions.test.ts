@@ -378,3 +378,44 @@ describe('interactions — drop_loot', () => {
     expect(lootItem.carriedBy).toBe('thief2')
   })
 })
+
+// ─── tickInteractions — missing/frozen player branches ────────────────────────
+
+describe('tickInteractions — edge cases', () => {
+  it('cancels interaction when player position is not found in state', () => {
+    const door: Door = { id: 'door1', x: 5, y: 6, locked: true, open: false }
+    const state = makeBaseState({ doors: [door] })
+    const interactions = new Map()
+
+    startInteraction(state, 'thief1', 'pick_lock', 'door1', interactions)
+    expect(interactions.has('thief1')).toBe(true)
+
+    // Remove the player position from state to simulate a ghost interaction
+    state.playerPositions = []
+
+    tickInteractions(state, interactions)
+
+    // Interaction should be cleaned up
+    expect(interactions.has('thief1')).toBe(false)
+  })
+
+  it('cancels interaction when player becomes frozen mid-progress', () => {
+    const door: Door = { id: 'door1', x: 5, y: 6, locked: true, open: false }
+    const state = makeBaseState({ doors: [door], playerPos: { frozen: false } })
+    const interactions = new Map()
+
+    startInteraction(state, 'thief1', 'pick_lock', 'door1', interactions)
+    expect(interactions.has('thief1')).toBe(true)
+
+    // Freeze the player mid-interaction
+    const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+    pos.frozen = true
+
+    tickInteractions(state, interactions)
+
+    // Interaction should be cancelled due to freeze
+    expect(interactions.has('thief1')).toBe(false)
+    // Door must remain locked
+    expect(door.locked).toBe(true)
+  })
+})

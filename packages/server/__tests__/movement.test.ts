@@ -237,4 +237,53 @@ describe('movement — applyPlayerMove', () => {
       expect(() => applyPlayerMove(state, map, 'unknown-id', 1, 0)).not.toThrow()
     })
   })
+
+  describe('getTileAt — out-of-bounds tile', () => {
+    it('treats coordinates outside all map rooms as wall (blocks movement)', () => {
+      // Build a map whose single room covers only 4×4 tiles at offset (2,2)
+      const smallMap: MapDef = {
+        id: 'small',
+        name: 'Small',
+        width: 10,
+        height: 10,
+        rooms: [
+          {
+            id: 'r1',
+            name: 'R1',
+            x: 2,
+            y: 2,
+            width: 4,
+            height: 4,
+            tiles: Array.from({ length: 4 }, () =>
+              Array(4).fill(TileType.Floor),
+            ),
+          },
+        ],
+        spawnPoints: { security: [{ x: 3, y: 3 }], thieves: [{ x: 4, y: 4 }] },
+        doorDefs: [],
+        cameraDefs: [],
+        exitPosition: { x: 4, y: 4 },
+        lootRoomIds: [],
+        alarmRoomIds: [],
+      }
+
+      const state = makeState()
+      // Place thief at (3,3) which is inside the room
+      const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+      pos.x = 3
+      pos.y = 3
+
+      // Moving left to x=3-speed lands at ~2.75 which is inside room → allowed
+      // Moving far left (dx=-1 many times) eventually exits the room bounding box
+      // We simulate by placing thief right at the left edge of the room (x=2)
+      // and trying to move left into tile x=1 which is outside all rooms → wall
+      pos.x = 2.01
+      pos.y = 3
+
+      const beforeX = pos.x
+      applyPlayerMove(state, smallMap, 'thief1', -1, 0)
+      // Player should NOT move into the out-of-bounds wall tile
+      expect(pos.x).toBeCloseTo(beforeX, 2)
+    })
+  })
 })
