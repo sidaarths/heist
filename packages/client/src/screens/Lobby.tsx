@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { PlayerRole, PlayerInfo } from '@heist/shared' // PlayerInfo used in room.players.map
 import { connection } from '../net/connection'
+import { RulesPanel } from '../components/RulesPanel'
 import {
   currentRoom, myPlayerId, myPlayerName, myPlayer,
   isSecurityTaken, errorMessage, isLoading,
@@ -450,6 +451,7 @@ export function Lobby() {
           <div style={{ marginTop: '20px' }}>
             <button
               onClick={() => setShowRules(r => !r)}
+              aria-expanded={showRules}
               style={{
                 width: '100%', padding: '9px',
                 background: 'transparent',
@@ -463,22 +465,8 @@ export function Lobby() {
               {showRules ? '▼ HOW TO PLAY' : '▶ HOW TO PLAY'}
             </button>
             {showRules && (
-              <div class="join-expand" style={{
-                marginTop: '6px', padding: '14px 16px',
-                background: '#06080f',
-                border: `1px solid ${B}22`,
-                fontSize: '17px', lineHeight: '1.6',
-                fontFamily: "'VT323', monospace",
-              }}>
-                {(!me?.role || me.role === 'unassigned') && (
-                  <RulesGeneral />
-                )}
-                {me?.role === 'thief' && (
-                  <RulesThief />
-                )}
-                {me?.role === 'security' && (
-                  <RulesSecurity />
-                )}
+              <div class="join-expand" style={{ marginTop: '6px' }}>
+                <RulesPanel role={me?.role} />
               </div>
             )}
           </div>
@@ -634,68 +622,6 @@ export function Lobby() {
           <span class="blink" style={{ marginLeft: '6px', color: '#1a8c1a' }}>●</span>
         </div>
       </div>
-    </div>
-  )
-}
-
-// ─── Rules panels ─────────────────────────────────────────────────────────────
-const B_COL  = '#00cfff'
-const P_COL  = '#bf00ff'
-const G_COL  = '#00ff88'
-const R_COL  = '#ff003c'
-const D_COL  = '#4a7a4a'
-
-function RulesRow({ icon, text, col = '#7aaa7a' }: { icon: string; text: string; col?: string }) {
-  return (
-    <div style={{ display: 'flex', gap: '8px', marginBottom: '5px', alignItems: 'flex-start' }}>
-      <span style={{ color: col, flexShrink: 0 }}>{icon}</span>
-      <span style={{ color: '#8ab88a' }}>{text}</span>
-    </div>
-  )
-}
-
-function RulesGeneral() {
-  return (
-    <div>
-      <div style={{ color: B_COL, marginBottom: '8px', letterSpacing: '2px', fontSize: '15px' }}>OVERVIEW</div>
-      <RulesRow icon="◈" text="1 Security officer vs up to 4 Thieves." col={B_COL} />
-      <RulesRow icon="◈" text="Thieves steal 3 loot items from rooms and escape through the EXIT." col={P_COL} />
-      <RulesRow icon="◈" text="Security must catch every thief before they escape." col={R_COL} />
-      <div style={{ color: D_COL, marginTop: '8px', letterSpacing: '2px', fontSize: '15px' }}>SELECT A ROLE TO SEE YOUR BRIEFING</div>
-    </div>
-  )
-}
-
-function RulesThief() {
-  return (
-    <div>
-      <div style={{ color: P_COL, marginBottom: '8px', letterSpacing: '2px', fontSize: '15px' }}>THIEF BRIEFING</div>
-      <RulesRow icon="▶" text="Steal 3 loot items — they auto-pickup when you walk close." col={G_COL} />
-      <RulesRow icon="▶" text="Reach the EXIT tile while carrying loot to win." col={G_COL} />
-      <RulesRow icon="▶" text="Each item you carry slows you down — 3 is the max." col={P_COL} />
-      <div style={{ color: B_COL, marginTop: '8px', marginBottom: '4px', letterSpacing: '2px', fontSize: '15px' }}>CONTROLS</div>
-      <RulesRow icon="⌨" text="WASD or Arrow Keys to move." col={B_COL} />
-      <RulesRow icon="⌨" text="Click a locked door nearby to pick the lock (4 sec)." col={B_COL} />
-      <RulesRow icon="⌨" text="Click a camera nearby to destroy it (5 sec) before it spots you." col={B_COL} />
-      <RulesRow icon="⌨" text="Click an alarm panel (!) to disable an active alarm." col={B_COL} />
-      <div style={{ color: R_COL, marginTop: '8px', marginBottom: '4px', letterSpacing: '2px', fontSize: '15px' }}>WATCH OUT</div>
-      <RulesRow icon="!" text="Camera spots you → alarm triggers. Disable it or the timer shrinks fast." col={R_COL} />
-      <RulesRow icon="!" text="Guard within 1.5 tiles → frozen for 5 seconds." col={R_COL} />
-    </div>
-  )
-}
-
-function RulesSecurity() {
-  return (
-    <div>
-      <div style={{ color: B_COL, marginBottom: '8px', letterSpacing: '2px', fontSize: '15px' }}>SECURITY BRIEFING</div>
-      <RulesRow icon="▶" text="You see the entire map — thieves only see a limited radius." col={B_COL} />
-      <RulesRow icon="▶" text="Freeze thieves by deploying a guard near them (1.5-tile range)." col={B_COL} />
-      <RulesRow icon="▶" text="Win by catching all thieves before any escape with 3 loot." col={R_COL} />
-      <div style={{ color: B_COL, marginTop: '8px', marginBottom: '4px', letterSpacing: '2px', fontSize: '15px' }}>ABILITIES</div>
-      <RulesRow icon="◉" text="CUT LIGHTS — blinds all thieves for 8 seconds (3 uses per game)." col={P_COL} />
-      <RulesRow icon="◉" text="TRIGGER ALARM — activates the alarm immediately; shrinks escape timer." col={R_COL} />
-      <RulesRow icon="◉" text="Cameras auto-alert when thieves walk into their field of view." col={B_COL} />
     </div>
   )
 }

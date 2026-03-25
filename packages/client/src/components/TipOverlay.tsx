@@ -24,12 +24,11 @@ export const TIPS: Record<string, string> = {
   near_locked_door:   'Locked door nearby — click it to pick the lock (4 seconds)',
   // Cameras
   near_camera:        'Camera nearby — click it to destroy it (5 seconds) before it spots you',
-  camera_spotted:     'CAMERA spotted you! Find an alarm panel (!) and click it to disable the alarm',
   // Guards
   guard_spawned:      'A guard is on patrol — get within 1.5 tiles and you\'ll be frozen for 5 seconds',
   guard_nearby:       'Guard nearby! Stay clear or you\'ll be frozen in place',
   // Alarm
-  alarm_triggered:    'Alarm triggered! Click an alarm panel (!) to disable it and restore the timer',
+  alarm_triggered:    'ALARM triggered! Find an alarm panel (!) and click it to disable the alarm',
 }
 
 const DISPLAY_MS = 6000
@@ -67,8 +66,6 @@ export function TipOverlay({ gs, myId }: { gs: GameState | null; myId: string | 
   // Alarm triggered
   useEffect(() => {
     if (!gs?.alarmTriggered) return
-    // Distinguish camera-caught vs manual: camera_spotted if no preAlarmTicksRemaining
-    // (preAlarmTicksRemaining is null when timer was already at/below lockdown cap)
     showTip('alarm_triggered')
   }, [gs?.alarmTriggered])
 
