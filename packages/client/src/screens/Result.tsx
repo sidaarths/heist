@@ -10,7 +10,6 @@ import { connection } from '../net/connection'
 import {
   currentRoom,
   myPlayerId,
-  myPlayerName,
   gameOverResult,
   clearGameOver,
   clearChatMessages,

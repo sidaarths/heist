@@ -13,7 +13,7 @@ interface Tip {
   text: string
 }
 
-export const TIPS: Record<string, string> = {
+const TIPS: Record<string, string> = {
   // Controls
   movement_controls:  'WASD or Arrow Keys to move · Click objects nearby to interact',
   // Loot

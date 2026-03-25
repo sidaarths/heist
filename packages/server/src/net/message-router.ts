@@ -4,7 +4,6 @@ import type { RoomManager } from '../lobby'
 import type { GameSessionManager } from '../game/session-manager'
 
 type Responder = (msg: ServerMessage) => void
-type ThiefBroadcast = (roomId: string, msg: ServerMessage, excludeRoles?: string[]) => void
 
 const MAX_NAME_LEN = 24
 const MAX_ROOM_ID_LEN = 12

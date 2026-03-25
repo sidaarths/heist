@@ -9,8 +9,6 @@ import { randomBytes } from 'crypto'
 
 const ALPHANUMERIC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
-type CreateRoomSuccess = { room: GameRoom; player: PlayerInfo }
-type CreateRoomError = { error: string }
 type RoomResult = { room: GameRoom; player: PlayerInfo } | { error: string }
 type RoleResult = { room: GameRoom } | { error: string }
 type ReadyResult = { room: GameRoom; started: boolean } | { error: string }
