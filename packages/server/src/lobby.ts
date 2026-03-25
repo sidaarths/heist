@@ -162,6 +162,9 @@ export class RoomManager {
     const allAssigned = room.players.every(p => p.role !== 'unassigned')
     if (!allAssigned) return { error: 'All players must select a role before starting.' }
 
+    // 'planning' is a start-sentinel: socket-handler sees this phase
+    // on the returned room_state and immediately calls sessions.startGame(),
+    // which transitions the room to 'heist'. The client never observes 'planning'.
     room.phase = 'planning'
     return { room }
   }

@@ -42,7 +42,6 @@ The server listens on `http://localhost:3001` and the client dev server on `http
 
 ## Commands
 
-<!-- AUTO-GENERATED -->
 ### Root (monorepo)
 
 | Command | Description |
@@ -80,7 +79,6 @@ The server listens on `http://localhost:3001` and the client dev server on `http
 |---------|-------------|
 | `bun run build` | Build to `dist/` |
 | `bun run typecheck` | TypeScript type check |
-<!-- END AUTO-GENERATED -->
 
 ## Environment Variables
 
