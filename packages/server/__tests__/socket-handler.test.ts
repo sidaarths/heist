@@ -226,7 +226,7 @@ describe('SocketHandler', () => {
       const { ws, sent } = makeWs('p1')
       handler.open(ws)
 
-      handler.message(ws, 'not valid json', false)
+      handler.message(ws, 'not valid json')
 
       const errMsg = sent.find(m => m.type === 'error' && (m as any).code === 'INVALID_JSON')
       expect(errMsg).toBeDefined()
