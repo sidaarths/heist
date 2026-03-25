@@ -12,6 +12,13 @@ export type ClientMessage =
   | { type: 'player_action'; action: 'pick_lock' | 'destroy_camera' | 'disable_alarm' | 'take_loot' | 'drop_loot'; targetId: string }
   | { type: 'security_action'; action: 'lock_door' | 'unlock_door' | 'trigger_alarm' | 'cut_lights' | 'release_guard'; targetId?: string; patrolPath?: Array<{ x: number; y: number }> }
   | { type: 'reset_room' }
+  | { type: 'request_replay' }
+
+export interface FinalStats {
+  lootEscaped: number
+  timeElapsed: number
+  thievesFrozen: number
+}
 
 // Server -> Client messages
 export type ServerMessage =
@@ -24,5 +31,6 @@ export type ServerMessage =
   | { type: 'error'; code: string; message: string }
   | { type: 'game_start'; gameState: GameState }
   | { type: 'game_state_tick'; gameState: GameState; tick: number }
-  | { type: 'game_over'; winner: 'thieves' | 'security'; reason: string }
+  | { type: 'game_over'; winner: 'thieves' | 'security'; reason: string; finalStats: FinalStats }
   | { type: 'chat_message'; fromId: string; fromName: string; message: string }
+  | { type: 'replay_data'; buffer: GameState[] }

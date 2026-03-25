@@ -265,35 +265,35 @@ Server → Client: game_state_tick (20/s), game_start, game_over, chat_message
 
 ---
 
-## 🔲 Phase 4 — Resolution & Replay
+## ✅ Phase 4 — Resolution & Replay (COMPLETE)
 
-**Branch:** `phase-4`
+**Branch:** `phase-4`  **PR:** #5
 
-### Goal
-Show a clean win/lose screen. Then play back the full heist as an animated overhead replay that reveals everything to the thieves — the punchline of every game.
+### Delivered
 
-### Server Tasks
-- [ ] **Replay buffer** — server accumulates `GameState[]` snapshots during heist at tick rate
-- [ ] **`game_over` payload** — includes winner, reason, final stats (loot escaped, thieves trapped, time elapsed)
-- [ ] **Replay delivery** — on request or auto-send compressed replay buffer to all clients after resolution screen
+#### Server
+- [x] **`game_over` payload** — includes `finalStats: { lootEscaped, timeElapsed, thievesFrozen }`
+- [x] **`request_replay` message** — new `ClientMessage`; server responds with `replay_data: { buffer: GameState[] }`
+- [x] **Session retention** — interval cleared on game end but session kept for replay; fully destroyed on `reset_room` or after `ROOM_CLEANUP_DELAY_MS` (5 min)
+- [x] **One-shot replay guard** — `sendReplay` is idempotent per player; repeated calls are no-ops (DoS prevention)
+- [x] **`reset_room` blocks `replay` phase** — host cannot wipe buffer while others are watching
+- [x] **`replayBuffer` is `readonly`** on `GameEngine`
 
-### Client Tasks
-- [ ] **"Watch Replay" button** — transitions to replay view
-- [ ] **Replay playback** — overhead canvas renders recorded `GameState[]` snapshots; scrubber bar; play/pause; 1× / 2× speed
-- [ ] **Ghost paths** — draw translucent path lines behind each player as replay advances
-- [ ] **Event callouts** — pop small labels at key moments ("DOOR LOCKED", "CAMERA DESTROYED", "ALARM TRIGGERED")
+#### Client
+- [x] **`Result.tsx`** — "Watch Replay" button (`data-testid="watch-replay-btn"`) that sends `request_replay`
+- [x] **`Replay.tsx`** — overhead canvas with incremental ghost path rendering, scrubber bar, play/pause, 1×/2× speed toggle; full `aria-label` on all controls
+- [x] **`App.tsx`** — handles `replay_data`, routes `phase === 'replay'` → `<Replay />`
 
-### TDD — Tests to Write First
-```typescript
-// server: replay.test.ts
-- replay buffer length equals number of ticks elapsed
-- each snapshot is a deep copy (not reference)
-- replay payload includes all players, loot, door states
+#### Security Fixes (from code review)
+- [x] Replay DoS: `sendReplay` one-shot guard prevents repeated large `JSON.stringify` calls stalling the event loop
+- [x] Disconnect during resolution/replay now calls `stopInterval` (preserves buffer) instead of `stopRoom` (destroyed buffer)
+- [x] `replay_data` validated with `Array.isArray` client-side before storing
 
-// e2e: resolution.spec.ts
-- "Watch Replay" button transitions to replay view
-- replay playback advances through snapshots
-```
+#### Tests
+- [x] **15 server unit tests** (`replay.test.ts`) — buffer accumulation, deep copy isolation, `REPLAY_BUFFER_MAX` cap, `finalStats` shape and computation
+- [x] **23 coverage gap tests** — `session-manager` (`stopInterval`, `getReplayBuffer`, `sendReplay` idempotency), `message-router` (`handleRequestReplay`, `handleResetRoom` all paths), `movement` (wall fallback), `interactions` (frozen/missing-player branches)
+- [x] **12 E2E tests** (`resolution.spec.ts`, Chromium + Firefox) — Watch Replay button, `request_replay` WS message, replay canvas, scrubber, play/pause, speed toggle
+- [x] **206 server unit tests total** (up from 183), 0 fail; line coverage 97.95% → 99.97%
 
 ---
 
@@ -352,7 +352,7 @@ LOOT_TO_WIN                  = 3
 - Alarm timer restore: `disable_alarm` restores `preAlarmTicksRemaining − elapsed_lockdown_ticks`, not the full saved value
 - Tick loop cleanup: `onGameOver` callback clears `setInterval` on game end; no stale ticks after `game_over`
 - `preAlarmTicksRemaining` cleared to `null` before `game_over` is broadcast
-- `reset_room` restricted to `lobby` and `resolution` phases; calls `stopRoom` to clear any active tick loop before mutating state
+- `reset_room` restricted to `lobby`, `resolution`, and `replay` phases; calls `stopRoom` to clear any active tick loop before mutating state
 - Per-player fog-of-war: `game_state_tick` is individually filtered per player; thieves only receive `playerPositions` within `THIEF_VISION_TILES`
 - IP-level rate limiting: `MAX_MESSAGES_PER_IP_PER_SEC = 100` closes connection on violation; `MAX_CONNECTIONS_PER_IP = 5` rejects new connections
 - Guard spawn cap: `MAX_GUARDS_PER_ROOM = 5`; `release_guard` has `COOLDOWN_RELEASE_GUARD_TICKS = 300` cooldown
@@ -362,8 +362,9 @@ LOOT_TO_WIN                  = 3
 - Wildcard origin matching fixed: `*.example.com` now requires a single non-empty subdomain label (no dots); prevents subdomain-bypass and lookalike domains
 
 ### Deferred
-- **Stale room TTL** — `ROOM_CLEANUP_DELAY_MS` constant exists but sweep not implemented; add periodic cleanup job
+- **Stale room TTL** — post-game sessions auto-delete after `ROOM_CLEANUP_DELAY_MS` (5 min); active lobby rooms still have no TTL sweep
 - **Security headers** — add `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy` via Hono middleware
+- **Replay event callouts** — pop terminal-style labels at key moments ("DOOR LOCKED", "ALARM TRIGGERED") not yet implemented
 
 ---
 
@@ -401,7 +402,7 @@ packages/
 │       ├── interactions.test.ts     ✅
 │       ├── security-actions.test.ts ✅
 │       ├── win-conditions.test.ts   ✅
-│       └── replay.test.ts           🔲 Phase 4
+│       └── replay.test.ts           ✅ Phase 4
 │
 └── client/src/
     ├── main.tsx          ✅
@@ -412,8 +413,8 @@ packages/
     ├── screens/
     │   ├── Lobby.tsx        ✅
     │   ├── Heist.tsx        ✅ (canvas, fog-of-war, chat sidebar, HUD, security toolbar)
-    │   ├── Resolution.tsx   🔲 Phase 4
-    │   └── Replay.tsx       🔲 Phase 4
+    │   ├── Result.tsx       ✅ Phase 4 (winner screen, finalStats, Watch Replay button)
+    │   └── Replay.tsx       ✅ Phase 4 (overhead canvas, ghost paths, scrubber, play/pause, speed)
     ├── canvas/
     │   ├── MapRenderer.ts   ✅
     │   ├── EntityLayer.ts   ✅ (players, loot, cameras, guards, FOV cones)
@@ -423,7 +424,7 @@ packages/
         ├── multiplayer.spec.ts  ✅
         ├── planning.spec.ts     ✅ (rewritten as heist-chat tests)
         ├── heist.spec.ts        ✅
-        └── resolution.spec.ts   🔲 Phase 4
+        └── resolution.spec.ts   ✅ Phase 4
 ```
 
 ---

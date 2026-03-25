@@ -6,10 +6,24 @@
  */
 import { expect, type Page } from '@playwright/test'
 
-/** Navigate to the app root and wait for the HEIST heading. */
+/** Navigate to the app root, wait for the HEIST heading, and wait for the
+ *  WebSocket connection to be established so that subsequent send() calls
+ *  are not silently dropped (the client's send() is a no-op when the socket
+ *  is not yet OPEN).
+ *
+ *  The WS listener is registered BEFORE navigation to avoid a race where the
+ *  socket opens before we start listening.
+ */
 export async function goHome(page: Page): Promise<void> {
+  // Register the WebSocket listener before navigation so the open event is not missed.
+  const wsOpenPromise = page.waitForEvent('websocket', { timeout: 15_000 })
+
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'HEIST' })).toBeVisible()
+
+  // Playwright fires the 'websocket' page event when the WS handshake completes,
+  // meaning readyState === OPEN on both client and server sides.
+  await wsOpenPromise
 }
 
 /**

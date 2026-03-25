@@ -72,6 +72,10 @@ export function Result() {
     }
   }
 
+  function handleWatchReplay() {
+    connection.send({ type: 'request_replay' })
+  }
+
   return (
     <div
       data-testid="result-screen"
@@ -152,8 +156,8 @@ export function Result() {
           {isThievesWin ? '◈ THIEVES WIN' : '◈ SECURITY WINS'}
         </div>
 
-        {/* Play Again */}
-        <div>
+        {/* Play Again + Watch Replay */}
+        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
           <button
             data-testid="play-again-btn"
             onClick={handlePlayAgain}
@@ -171,6 +175,24 @@ export function Result() {
             }}
           >
             ▶ PLAY AGAIN
+          </button>
+          <button
+            data-testid="watch-replay-btn"
+            onClick={handleWatchReplay}
+            style={{
+              padding: '18px 48px',
+              background: 'transparent',
+              color: B,
+              border: `2px solid ${B}`,
+              fontFamily: "'Press Start 2P', monospace",
+              fontSize: '14px',
+              letterSpacing: '2px',
+              cursor: 'pointer',
+              boxShadow: `0 0 24px rgba(0,207,255,.2)`,
+              transition: 'filter .1s',
+            }}
+          >
+            ◈ WATCH REPLAY
           </button>
         </div>
 

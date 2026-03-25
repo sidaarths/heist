@@ -1,5 +1,5 @@
 import type { GameState, ServerMessage } from '@heist/shared'
-import { getRandomMap, TICK_MS, THIEF_VISION_TILES } from '@heist/shared'
+import { getRandomMap, TICK_MS, THIEF_VISION_TILES, ROOM_CLEANUP_DELAY_MS } from '@heist/shared'
 import type { MapDef } from '@heist/shared'
 import type { RoomManager } from '../lobby'
 import { initGameState } from './map-init'
@@ -39,6 +39,8 @@ interface Session {
 
 export class GameSessionManager {
   private sessions: Map<string, Session> = new Map()
+  /** Tracks which playerIds have already received replay data (one-shot guard). */
+  private replaySentTo = new Set<string>()
 
   constructor(
     private manager: RoomManager,
@@ -68,7 +70,7 @@ export class GameSessionManager {
       state,
       map,
       (msg) => this.broadcast(roomId, msg),
-      () => this.stopRoom(roomId), // clears the interval when game_over fires
+      () => this.stopInterval(roomId), // clears the interval when game_over fires, but keeps session for replay
     )
     session.engine = engine
 
@@ -98,14 +100,56 @@ export class GameSessionManager {
     session.timer = timer
   }
 
+  /**
+   * Stop the tick interval but keep the session entry so replay data remains
+   * accessible. Called when the game ends (game_over) or on disconnect during
+   * a post-game phase. Schedules automatic session cleanup after ROOM_CLEANUP_DELAY_MS.
+   */
+  stopInterval(roomId: string): void {
+    const session = this.sessions.get(roomId)
+    if (!session) return
+    if (session.timer) {
+      clearInterval(session.timer)
+      session.timer = null
+    }
+    // Auto-destroy after grace period so finished sessions don't accumulate in memory
+    setTimeout(() => this.sessions.delete(roomId), ROOM_CLEANUP_DELAY_MS)
+  }
+
+  /**
+   * Stop the tick interval AND remove the session entirely.
+   * Called when the room resets (reset_room message).
+   */
   stopRoom(roomId: string): void {
     const session = this.sessions.get(roomId)
     if (!session) return
     if (session.timer) clearInterval(session.timer)
     this.sessions.delete(roomId)
+    this.replaySentTo.clear()
   }
 
   getSession(roomId: string): Session | undefined {
     return this.sessions.get(roomId)
+  }
+
+  /**
+   * Return the full replay buffer for the given room.
+   * Returns an empty array if no session exists.
+   */
+  getReplayBuffer(roomId: string): GameState[] {
+    return this.sessions.get(roomId)?.engine.replayBuffer ?? []
+  }
+
+  /**
+   * Send the full replay buffer to a specific player.
+   * Idempotent — subsequent calls for the same player are no-ops to prevent
+   * repeated large JSON serialisations from stalling the event loop.
+   */
+  sendReplay(roomId: string, playerId: string): void {
+    if (!this.sendToPlayer) return
+    if (this.replaySentTo.has(playerId)) return
+    this.replaySentTo.add(playerId)
+    const buffer = this.getReplayBuffer(roomId)
+    this.sendToPlayer(playerId, { type: 'replay_data', buffer })
   }
 }

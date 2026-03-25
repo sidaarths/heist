@@ -1,6 +1,6 @@
-import type { GameState, ServerMessage } from '@heist/shared'
+import type { GameState, ServerMessage, FinalStats } from '@heist/shared'
 import type { MapDef } from '@heist/shared'
-import { BASE_MOVE_SPEED, REPLAY_BUFFER_MAX, ALARM_LOCKDOWN_TICKS, MAX_PATROL_WAYPOINTS } from '@heist/shared'
+import { BASE_MOVE_SPEED, REPLAY_BUFFER_MAX, ALARM_LOCKDOWN_TICKS, MAX_PATROL_WAYPOINTS, HEIST_DURATION_TICKS } from '@heist/shared'
 import { applyPlayerMove } from './movement'
 import {
   startInteraction,
@@ -25,7 +25,7 @@ import type { ClientMessage } from '@heist/shared'
 type BroadcastFn = (msg: ServerMessage) => void
 
 export class GameEngine {
-  replayBuffer: GameState[] = []
+  readonly replayBuffer: GameState[] = []
   private broadcast: BroadcastFn
   private onGameOver: (() => void) | undefined
 
@@ -66,7 +66,8 @@ export class GameEngine {
       this.state.room.phase = 'resolution'
       // Clean up transient alarm state before broadcasting final snapshot
       this.state.preAlarmTicksRemaining = null
-      this.broadcast({ type: 'game_over', winner: result.winner, reason: result.reason })
+      const finalStats = this.computeFinalStats(result.winner)
+      this.broadcast({ type: 'game_over', winner: result.winner, reason: result.reason, finalStats })
       // Stop the tick loop — session manager clears the interval
       this.onGameOver?.()
     }
@@ -193,6 +194,38 @@ export class GameEngine {
         }
       }
     }
+  }
+
+  private computeFinalStats(winner: 'thieves' | 'security'): FinalStats {
+    const thiefIds = new Set(
+      this.state.room.players.filter(p => p.role === 'thief').map(p => p.id),
+    )
+
+    // lootEscaped: loot items carried by a thief who is at the exit position
+    let lootEscaped = 0
+    if (winner === 'thieves') {
+      for (const lootItem of this.state.loot) {
+        if (!lootItem.carried || lootItem.carriedBy === null) continue
+        if (!thiefIds.has(lootItem.carriedBy)) continue
+        const carrierPos = this.state.playerPositions.find(p => p.playerId === lootItem.carriedBy)
+        if (!carrierPos) continue
+        if (carrierPos.x === this.state.exit.x && carrierPos.y === this.state.exit.y) {
+          lootEscaped++
+        }
+      }
+    }
+
+    // timeElapsed: ticks consumed since heist start
+    const timeElapsed = HEIST_DURATION_TICKS - this.state.heistTicksRemaining
+
+    // thievesFrozen: count of thief positions currently frozen
+    let thievesFrozen = 0
+    for (const pos of this.state.playerPositions) {
+      if (!thiefIds.has(pos.playerId)) continue
+      if (pos.frozen) thievesFrozen++
+    }
+
+    return { lootEscaped, timeElapsed, thievesFrozen }
   }
 
   private advanceGuards(): void {

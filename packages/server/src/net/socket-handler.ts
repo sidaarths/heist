@@ -13,8 +13,15 @@ interface RateLimit {
   resetAt: number
 }
 
-/** Max simultaneous WebSocket connections from a single IP address. */
-const MAX_CONNECTIONS_PER_IP = 5
+/** Max simultaneous WebSocket connections from a single IP address.
+ *  Set high enough to accommodate E2E test parallelism (4 workers × 2 contexts
+ *  × 2 browser projects = up to 16 concurrent localhost connections).
+ *  In production this would be set lower via the MAX_CONNECTIONS_PER_IP env var.
+ */
+const MAX_CONNECTIONS_PER_IP = parseInt(
+  process.env.MAX_CONNECTIONS_PER_IP ?? '20',
+  10,
+)
 /** Max messages per second summed across all connections from a single IP. */
 const MAX_MESSAGES_PER_IP_PER_SEC = 100
 
@@ -151,13 +158,20 @@ export class SocketHandler {
 
     const roomId = this.manager.playerRoomMap.get(playerId)
     if (roomId) {
+      const room = this.manager.getRoom(roomId)
+      const postGame = room?.phase === 'resolution' || room?.phase === 'replay'
       const result = this.manager.leaveRoom(roomId, playerId)
       // playerRoomMap is already cleaned up inside leaveRoom()
       if (result.room) {
         this.broadcastRoomState(roomId)
         this.broadcast(roomId, { type: 'player_left', playerId })
-        // Stop any active game session — a disconnection during planning/heist ends the game
-        this.sessions.stopRoom(roomId)
+        if (postGame) {
+          // Keep session alive so remaining players can still request the replay
+          this.sessions.stopInterval(roomId)
+        } else {
+          // Disconnect during planning/heist ends the game
+          this.sessions.stopRoom(roomId)
+        }
       } else {
         // Room was cleaned up (last player) — stop session if it somehow outlived the room
         this.sessions.stopRoom(roomId)
