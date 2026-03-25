@@ -25,14 +25,32 @@ import {
 import {
   MAPS, TICK_MS, TICK_RATE, THIEF_VISION_TILES,
   PICK_LOCK_TICKS, DESTROY_CAMERA_TICKS, DISABLE_ALARM_TICKS,
-  CHAT_MESSAGE_MAX_LEN,
+  CHAT_MESSAGE_MAX_LEN, MAX_LOOT_CARRY, CUT_LIGHTS_MAX_USES,
 } from '@heist/shared'
 import { MapRenderer, TILE } from '../canvas/MapRenderer'
 import { EntityLayer, type InteractionProgress } from '../canvas/EntityLayer'
+import { TipOverlay } from '../components/TipOverlay'
 
 // Resolve the correct MapDef from a mapId — falls back to first map
 function getMapDef(mapId: string | undefined) {
-  return MAPS.find(m => m.id === mapId) ?? MAPS[0]
+  const found = MAPS.find(m => m.id === mapId)
+  if (!found && mapId) console.warn(`[Heist] Unknown mapId "${mapId}", falling back to first map`)
+  return found ?? MAPS[0]
+}
+
+/** Subtle map-name watermark shown in both thief and security views. */
+function MapWatermark({ mapId }: { mapId: string | undefined }) {
+  if (!mapId) return null
+  return (
+    <div style={{
+      position: 'absolute', bottom: 10, right: 12,
+      color: '#0d2a1a', fontFamily: "'VT323', monospace",
+      fontSize: '13px', letterSpacing: '2px',
+      pointerEvents: 'none',
+    }}>
+      {getMapDef(mapId).name.toUpperCase()}
+    </div>
+  )
 }
 
 function actionDurationMs(action: string): number {
@@ -325,9 +343,9 @@ function SecurityPanel({
           />
           <AbilityBtn
             testId="btn-cut-lights"
-            label="CUT LIGHTS"
+            label={`CUT LIGHTS${gs ? ` (${gs.cutLightsUsesRemaining ?? CUT_LIGHTS_MAX_USES})` : ''}`}
             icon="💡"
-            cooldown={cooldowns.cut_lights}
+            cooldown={(gs?.cutLightsUsesRemaining === 0) ? 999 : cooldowns.cut_lights}
             onClick={() => sendImmediate('cut_lights')}
           />
         </div>
@@ -337,7 +355,7 @@ function SecurityPanel({
             testId="btn-trigger-alarm"
             label="ALARM"
             icon="🚨"
-            cooldown={cooldowns.trigger_alarm}
+            cooldown={gs?.alarmTriggered ? 999 : cooldowns.trigger_alarm}
             onClick={() => sendImmediate('trigger_alarm')}
           />
           <AbilityBtn
@@ -427,9 +445,11 @@ function ThiefHud({ gs, myId, lightsOut, interactionBar }: {
         </span>
         <span data-testid="hud-loot" style={{
           fontFamily: "'VT323', monospace",
-          fontSize: '20px', color: '#ffd700',
+          fontSize: '20px',
+          color: lootCount >= MAX_LOOT_CARRY ? '#00ff88' : '#ffd700',
+          textShadow: lootCount >= MAX_LOOT_CARRY ? '0 0 10px #00ff88' : 'none',
         }}>
-          ◈ {lootCount}
+          ◈ {lootCount}/{MAX_LOOT_CARRY}
         </span>
         {lightsOut && (
           <span style={{
@@ -935,6 +955,7 @@ export function Heist() {
             }}
           />
           <SecurityHud gs={gs} />
+          <MapWatermark mapId={gs?.mapId} />
         </div>
 
         {/* Side panel */}
@@ -968,6 +989,8 @@ export function Heist() {
           tabIndex={0}
         />
         <ThiefHud gs={gs} myId={myId} lightsOut={gs?.lightsOut ?? false} interactionBar={interactionBar} />
+        <TipOverlay gs={gs} myId={myId} />
+        <MapWatermark mapId={gs?.mapId} />
       </div>
       <ThiefChatPanel />
     </div>

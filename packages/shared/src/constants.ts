@@ -25,6 +25,8 @@ export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 5
 export const LOOT_COUNT_MIN = 3
 export const LOOT_COUNT_MAX = 5
+export const MAX_LOOT_CARRY = 3 // max loot a thief can carry (same as LOOT_TO_WIN — no hoarding)
+export const AUTO_PICKUP_RADIUS = 0.8 // tiles — loot is auto-collected within this range
 export const MAX_GUARDS_PER_ROOM = 5
 export const MAX_PATROL_WAYPOINTS = 20
 export const COOLDOWN_RELEASE_GUARD_TICKS = 300 // 15s — one guard per 15s
@@ -34,6 +36,7 @@ export const THIEF_VISION_TILES = 5
 export const ALARM_PANEL_COUNT_MIN = 4
 export const ALARM_PANEL_COUNT_MAX = 6
 export const LOOT_TO_WIN = 3 // minimum loot to escape with
+export const CUT_LIGHTS_MAX_USES = 3 // security can cut lights this many times per game
 
 // Chat
 export const CHAT_MESSAGE_MAX_LEN = 200

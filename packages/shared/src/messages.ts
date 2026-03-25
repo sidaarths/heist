@@ -1,4 +1,4 @@
-import type { GamePhase, PlayerInfo, PlayerRole, GameRoom, GameState } from './types'
+import type { PlayerInfo, PlayerRole, GameRoom, GameState } from './types'
 
 // Client -> Server messages
 export type ClientMessage =
@@ -24,10 +24,8 @@ export interface FinalStats {
 export type ServerMessage =
   | { type: 'room_created'; roomId: string; playerId: string }
   | { type: 'room_joined'; roomId: string; playerId: string; players: PlayerInfo[] }
-  | { type: 'player_updated'; player: PlayerInfo }
   | { type: 'player_left'; playerId: string }
   | { type: 'room_state'; room: GameRoom }
-  | { type: 'phase_change'; phase: GamePhase }
   | { type: 'error'; code: string; message: string }
   | { type: 'game_start'; gameState: GameState }
   | { type: 'game_state_tick'; gameState: GameState; tick: number }

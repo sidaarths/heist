@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { PlayerRole, PlayerInfo } from '@heist/shared' // PlayerInfo used in room.players.map
 import { connection } from '../net/connection'
+import { RulesPanel } from '../components/RulesPanel'
 import {
   currentRoom, myPlayerId, myPlayerName, myPlayer,
   isSecurityTaken, errorMessage, isLoading,
@@ -94,8 +95,26 @@ export function Lobby() {
   const [playerName, setPlayerName] = useState('')
   const [joinCode,   setJoinCode]   = useState('')
   const [joinMode,   setJoinMode]   = useState(false)
-  const [copied,     setCopied]     = useState(false)
-  const copyTimer                   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [showRules,  setShowRules]  = useState(false)
+  const copyCodeTimer               = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copyLinkTimer               = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-fill join code from ?room=XXXXXX URL parameter.
+  // Validate against the same alphanumeric pattern the server enforces so
+  // a crafted URL can never inject arbitrary bytes into the join message.
+  useEffect(() => {
+    const ROOM_CODE_RE = /^[A-Z0-9]{6}$/
+    const params = new URLSearchParams(window.location.search)
+    const raw = params.get('room')
+    if (!raw) return
+    const normalised = raw.toUpperCase()
+    if (ROOM_CODE_RE.test(normalised)) {
+      setJoinCode(normalised)
+      setJoinMode(true)
+    }
+  }, [])
 
   const room     = currentRoom.value
   const me       = myPlayer.value
@@ -154,9 +173,19 @@ export function Lobby() {
   function handleCopyCode() {
     if (!room) return
     navigator.clipboard.writeText(room.id).then(() => {
-      setCopied(true)
-      if (copyTimer.current) clearTimeout(copyTimer.current)
-      copyTimer.current = setTimeout(() => setCopied(false), 1800)
+      setCopiedCode(true)
+      if (copyCodeTimer.current) clearTimeout(copyCodeTimer.current)
+      copyCodeTimer.current = setTimeout(() => setCopiedCode(false), 1800)
+    }).catch(() => setError('CLIPBOARD ACCESS DENIED.'))
+  }
+
+  function handleCopyLink() {
+    if (!room) return
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${room.id}`
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setCopiedLink(true)
+      if (copyLinkTimer.current) clearTimeout(copyLinkTimer.current)
+      copyLinkTimer.current = setTimeout(() => setCopiedLink(false), 1800)
     }).catch(() => setError('CLIPBOARD ACCESS DENIED.'))
   }
 
@@ -248,6 +277,7 @@ export function Lobby() {
             <span data-testid="player-count" style={{ ...label, marginBottom: 0 }}>{room.players.length}/5 AGENTS</span>
           </div>
 
+          {/* Room code — click to copy the bare code */}
           <div
             data-testid="room-code"
             class="rcode"
@@ -256,10 +286,10 @@ export function Lobby() {
             onClick={handleCopyCode}
             onKeyDown={(e) => e.key === 'Enter' && handleCopyCode()}
             aria-label={`Copy room code ${room.id}`}
-            title="Click to copy"
+            title="Click to copy code"
             style={{
-              textAlign: 'center', color: copied ? G : R,
-              padding: '14px 10px', marginBottom: '24px',
+              textAlign: 'center', color: copiedCode ? G : R,
+              padding: '14px 10px', marginBottom: '8px',
               background: '#100008', cursor: 'pointer',
               fontSize: '2rem', letterSpacing: '0.35em',
               transition: 'color .2s',
@@ -267,9 +297,26 @@ export function Lobby() {
           >
             {room.id}
             <div style={{ fontSize: '13px', letterSpacing: '2px', marginTop: '6px', fontFamily: "'VT323', monospace", opacity: 0.7 }}>
-              {copied ? '✓ COPIED' : 'CLICK TO COPY'}
+              {copiedCode ? '✓ CODE COPIED' : 'CLICK TO COPY CODE'}
             </div>
           </div>
+
+          {/* Invite link button */}
+          <button
+            onClick={handleCopyLink}
+            style={{
+              display: 'block', width: '100%',
+              marginBottom: '24px', padding: '8px',
+              background: 'transparent',
+              border: `1px solid ${copiedLink ? G : 'rgba(200,255,200,0.2)'}`,
+              color: copiedLink ? G : 'rgba(200,255,200,0.55)',
+              fontFamily: "'VT323', monospace",
+              fontSize: '14px', letterSpacing: '2px',
+              cursor: 'pointer', transition: 'color .2s, border-color .2s',
+            }}
+          >
+            {copiedLink ? '✓ INVITE LINK COPIED' : '⎘ COPY INVITE LINK'}
+          </button>
 
           {errorBanner}
 
@@ -400,9 +447,33 @@ export function Lobby() {
             ))}
           </ul>
 
+          {/* How to Play */}
+          <div style={{ marginTop: '20px' }}>
+            <button
+              onClick={() => setShowRules(r => !r)}
+              aria-expanded={showRules}
+              style={{
+                width: '100%', padding: '9px',
+                background: 'transparent',
+                border: `1px solid ${showRules ? B : '#1a2a3a'}`,
+                color: showRules ? B : '#2a4a5a',
+                fontFamily: "'VT323', monospace",
+                fontSize: '16px', letterSpacing: '2px',
+                cursor: 'pointer', transition: 'color .15s, border-color .15s',
+              }}
+            >
+              {showRules ? '▼ HOW TO PLAY' : '▶ HOW TO PLAY'}
+            </button>
+            {showRules && (
+              <div class="join-expand" style={{ marginTop: '6px' }}>
+                <RulesPanel role={me?.role} />
+              </div>
+            )}
+          </div>
+
           {/* Leave */}
           <button class="pbtn" style={{
-            width: '100%', padding: '12px', marginTop: '24px',
+            width: '100%', padding: '12px', marginTop: '16px',
             background: 'transparent', color: '#3a5a3a', fontSize: '18px',
             letterSpacing: '2px', border: `2px solid #1a2a1a`,
             boxShadow: `3px 3px 0 #0a0f0a`,
@@ -522,9 +593,28 @@ export function Lobby() {
           </div>
         )}
 
+        {/* Objective blurb */}
+        <div style={{
+          marginTop: '22px', padding: '12px 14px',
+          border: `1px solid #1a2a3a`, background: '#06080f',
+          fontFamily: "'VT323', monospace", fontSize: '17px',
+          color: '#3a6a7a', letterSpacing: '1px', lineHeight: '1.55',
+        }}>
+          <span style={{ color: B, letterSpacing: '2px' }}>◈ OBJECTIVE</span>
+          <br />
+          <span style={{ color: '#5a8a9a' }}>
+            1 Security vs up to 4 Thieves.
+          </span>
+          <br />
+          <span style={{ color: '#3a5a6a' }}>
+            Thieves steal 3 loot items &amp; escape to the EXIT.
+            Security must catch every thief before they get out.
+          </span>
+        </div>
+
         {/* Status footer */}
         <div style={{
-          marginTop: '28px', borderTop: `1px solid #121e12`,
+          marginTop: '18px', borderTop: `1px solid #121e12`,
           paddingTop: '14px', textAlign: 'center',
           color: '#1e3e1e', fontSize: '14px', letterSpacing: '2px',
         }}>

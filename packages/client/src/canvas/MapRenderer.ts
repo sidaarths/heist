@@ -10,10 +10,12 @@ import type { Door } from '@heist/shared'
 
 export const TILE = 32 // pixels per tile
 
-const COLOR_WALL         = '#080810'
-const COLOR_FLOOR        = '#0f1520'
+const COLOR_WALL         = '#08090f'
+const COLOR_WALL_MORTAR  = '#0e1020' // brick mortar lines
+const COLOR_FLOOR        = '#0d1a13'
 const COLOR_GRID         = 'rgba(0,207,255,0.03)'
-const COLOR_ROOM_BORDER  = 'rgba(0,207,255,0.12)'
+const COLOR_ROOM_BORDER  = 'rgba(0,207,255,0.45)'
+const COLOR_WALL_EDGE    = 'rgba(0,207,255,0.18)' // glow at wall-floor boundary
 
 const DOOR_FRAME        = '#5c3a0a'
 const DOOR_LOCKED_FILL  = 'rgba(100,0,0,0.85)'
@@ -54,13 +56,29 @@ export class MapRenderer {
     ctx.fillStyle = COLOR_WALL
     ctx.fillRect(0, 0, width * TILE, height * TILE)
 
-    // Floor tiles
+    // Brick wall texture — horizontal mortar lines every half-tile
+    ctx.strokeStyle = COLOR_WALL_MORTAR
+    ctx.lineWidth = 1
+    const brickH = TILE / 2
+    const brickW = TILE
+    for (let row = 0; row < height * 2; row++) {
+      const y = row * brickH
+      // Horizontal mortar line
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width * TILE, y); ctx.stroke()
+      // Vertical breaks, offset every other row to create staggered brick
+      const offset = (row % 2) * (TILE / 2)
+      for (let x = offset; x <= width * TILE; x += brickW) {
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + brickH); ctx.stroke()
+      }
+    }
+
+    // Floor tiles — covers brick texture in room areas
     ctx.fillStyle = COLOR_FLOOR
     for (const room of this.map.rooms) {
       ctx.fillRect(room.x * TILE, room.y * TILE, room.width * TILE, room.height * TILE)
     }
 
-    // Grid overlay
+    // Grid overlay (on floors only, but drawing everywhere — walls already have brick grid)
     ctx.strokeStyle = COLOR_GRID
     ctx.lineWidth = 0.5
     for (let col = 0; col <= width; col++) {
@@ -70,12 +88,15 @@ export class MapRenderer {
       ctx.beginPath(); ctx.moveTo(0, row * TILE); ctx.lineTo(width * TILE, row * TILE); ctx.stroke()
     }
 
-    // Room borders
+    // Room borders — bright edge showing wall-floor boundary (2px outside + subtle glow)
+    ctx.shadowColor = COLOR_WALL_EDGE
+    ctx.shadowBlur = 4
     ctx.strokeStyle = COLOR_ROOM_BORDER
-    ctx.lineWidth = 1
+    ctx.lineWidth = 2
     for (const room of this.map.rooms) {
       ctx.strokeRect(room.x * TILE, room.y * TILE, room.width * TILE, room.height * TILE)
     }
+    ctx.shadowBlur = 0
 
     // Doors
     for (const door of doors) {

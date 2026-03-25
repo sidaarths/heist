@@ -84,8 +84,8 @@ export function Replay() {
   const lastBuiltTickRef = useRef<number>(-1)
 
   const [tick, setTick]       = useState(0)
-  const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed]     = useState<1 | 2>(1)
+  const [playing, setPlaying] = useState(true)
+  const [speed, setSpeed]     = useState<1 | 2>(2)
 
   // Derive mapDef from first snapshot (or current room state)
   const firstSnap  = buffer[0]

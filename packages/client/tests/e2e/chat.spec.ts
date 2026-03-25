@@ -1,5 +1,5 @@
 /**
- * heist-chat.spec.ts — Heist-phase chat and timer tests.
+ * chat.spec.ts — Heist-phase chat and timer tests.
  *
  * Planning phase has been removed — the game starts immediately after
  * LAUNCH HEIST is clicked. These tests verify:

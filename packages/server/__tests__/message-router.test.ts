@@ -69,8 +69,8 @@ describe('MessageRouter', () => {
 
     const msgs = send('player-1', { type: 'select_role', role: 'security' })
     expect(msgs).toHaveLength(1)
-    // Should get room_state or player_updated back
-    expect(['room_state', 'player_updated', 'error'].includes(msgs[0].type)).toBe(true)
+    // Should get room_state or error back
+    expect(['room_state', 'error'].includes(msgs[0].type)).toBe(true)
   })
 
   it('routes set_ready message to lobby handler', () => {
@@ -127,6 +127,67 @@ describe('MessageRouter', () => {
     const msgs = send('p1', { type: 'security_action', action: 'lock_door', targetId: 'door-1' })
     expect(msgs[0].type).toBe('error')
     expect((msgs[0] as any).code).toBe('NOT_IN_ROOM')
+  })
+
+  // ─── WRONG_PHASE branches for in-game actions ────────────────────────────────
+
+  describe('WRONG_PHASE — actions sent during lobby phase', () => {
+    it('player_move while room is in lobby phase returns WRONG_PHASE error', () => {
+      const { roomId, hostId } = makeReadyRoom(manager, router)
+      // Room stays in lobby phase — player_move should fail
+      const msgs = send(hostId, { type: 'player_move', dx: 1, dy: 0 })
+      expect(msgs[0].type).toBe('error')
+      expect((msgs[0] as any).code).toBe('WRONG_PHASE')
+    })
+
+    it('player_action while room is in lobby phase returns WRONG_PHASE error', () => {
+      const { hostId } = makeReadyRoom(manager, router)
+      const msgs = send(hostId, { type: 'player_action', action: 'pick_lock', targetId: 'door-1' })
+      expect(msgs[0].type).toBe('error')
+      expect((msgs[0] as any).code).toBe('WRONG_PHASE')
+    })
+
+    it('security_action while room is in lobby phase returns WRONG_PHASE error', () => {
+      const { hostId } = makeReadyRoom(manager, router)
+      const msgs = send(hostId, { type: 'security_action', action: 'lock_door', targetId: 'door-1' })
+      expect(msgs[0].type).toBe('error')
+      expect((msgs[0] as any).code).toBe('WRONG_PHASE')
+    })
+  })
+
+  describe('INVALID_MESSAGE — security_action targetId validation', () => {
+    it('security_action with targetId longer than 64 chars returns INVALID_MESSAGE', () => {
+      // The targetId check in handleSecurityAction is reached only after the session guard.
+      // Provide a router with a mock sessionManager whose getSession returns a truthy value.
+      const mockEngine = { handleSecurityAction: () => {} } as any
+      const mockSessionManager = { getSession: (_id: string) => ({ engine: mockEngine }) } as any
+      const routerWithSession = new MessageRouter(manager, undefined, mockSessionManager)
+
+      function secSend(playerId: string, msg: any): ServerMessage[] {
+        const out: ServerMessage[] = []
+        routerWithSession.route(playerId, msg, r => out.push(r))
+        return out
+      }
+
+      const hostId = randomUUID()
+      const guestId = randomUUID()
+      const [created] = secSend(hostId, { type: 'create_room', playerName: 'Host' }) as any[]
+      const roomId = (created as any).roomId as string
+      secSend(guestId, { type: 'join_room', roomId, playerName: 'Guest' })
+      secSend(hostId, { type: 'select_role', role: 'security' })
+      secSend(guestId, { type: 'select_role', role: 'thief' })
+      secSend(hostId, { type: 'set_ready', ready: true })
+      secSend(guestId, { type: 'set_ready', ready: true })
+
+      // Put room in heist phase so we pass the phase guard and reach targetId validation
+      const room = manager.getRoom(roomId)!
+      room.phase = 'heist'
+
+      const longTargetId = 'x'.repeat(65)
+      const msgs = secSend(hostId, { type: 'security_action', action: 'lock_door', targetId: longTargetId })
+      expect(msgs[0].type).toBe('error')
+      expect((msgs[0] as any).code).toBe('INVALID_MESSAGE')
+    })
   })
 
   // ─── handleStartGame ─────────────────────────────────────────────────────────

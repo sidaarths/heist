@@ -10,6 +10,7 @@ import {
   ALARM_PANEL_COUNT_MIN,
   ALARM_PANEL_COUNT_MAX,
   HEIST_DURATION_TICKS,
+  CUT_LIGHTS_MAX_USES,
 } from '@heist/shared'
 
 function randInt(min: number, max: number): number {
@@ -143,5 +144,6 @@ export function initGameState(room: GameRoom, map: MapDef): GameState {
     preAlarmTicksRemaining: null,
     lightsOut: false,
     lightsOutRemainingTicks: 0,
+    cutLightsUsesRemaining: CUT_LIGHTS_MAX_USES,
   }
 }

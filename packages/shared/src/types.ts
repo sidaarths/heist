@@ -94,4 +94,6 @@ export interface GameState {
   preAlarmTicksRemaining: number | null
   lightsOut: boolean
   lightsOutRemainingTicks: number
+  /** How many times security can still cut the lights (counts down from CUT_LIGHTS_MAX_USES). */
+  cutLightsUsesRemaining: number
 }
