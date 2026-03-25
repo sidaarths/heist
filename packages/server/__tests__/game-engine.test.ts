@@ -320,6 +320,161 @@ describe('GameEngine', () => {
     })
   })
 
+  describe('Phase 3 integration — release_guard edge cases', () => {
+    it('release_guard with only 1 valid waypoint does not add a guard to state.guards', () => {
+      const room = makeRoom(1)
+      const state = initGameState(room, BASIC_MAP)
+      state.room.phase = 'heist'
+      const secId = room.players.find(p => p.role === 'security')!.id
+
+      // Provide a patrolPath with exactly 1 valid waypoint — engine requires >= 2 after filtering
+      const patrolPath = [{ x: 5, y: 5 }]
+
+      const engine = new GameEngine(state, BASIC_MAP)
+      engine.handleSecurityAction(secId, 'release_guard', undefined, patrolPath)
+
+      expect(state.guards.length).toBe(0)
+    })
+
+    it('release_guard with patrolPath that has out-of-bounds waypoints filtered to < 2 does not add a guard', () => {
+      const room = makeRoom(1)
+      const state = initGameState(room, BASIC_MAP)
+      state.room.phase = 'heist'
+      const secId = room.players.find(p => p.role === 'security')!.id
+
+      // Both waypoints are out-of-bounds (negative) — after filtering, 0 valid waypoints remain
+      const patrolPath = [
+        { x: -1, y: 5 },
+        { x: 5, y: -1 },
+      ]
+
+      const engine = new GameEngine(state, BASIC_MAP)
+      engine.handleSecurityAction(secId, 'release_guard', undefined, patrolPath)
+
+      expect(state.guards.length).toBe(0)
+    })
+  })
+
+  describe('Phase 3 integration — camera FOV detection via advanceTick', () => {
+    it('thief within camera range and FOV angle triggers alarm after advanceTick', () => {
+      const room = makeRoom(1)
+      const state = initGameState(room, BASIC_MAP)
+      state.room.phase = 'heist'
+
+      const thief = room.players.find(p => p.role === 'thief')!
+      const pos = state.playerPositions.find(p => p.playerId === thief.id)!
+
+      // Place camera at (10, 10) facing right (angle = 0), wide FOV
+      state.cameras = [{
+        id: 'cam1',
+        x: 10,
+        y: 10,
+        angle: 0,           // facing along +x axis
+        fov: Math.PI,       // 180 degrees — covers everything in front
+        destroyed: false,
+      }]
+
+      // Place thief directly in front of camera within detection range (2.5 tiles)
+      pos.x = 11.5
+      pos.y = 10
+
+      expect(state.alarmTriggered).toBe(false)
+
+      const engine = new GameEngine(state, BASIC_MAP)
+      engine.advanceTick()
+
+      expect(state.alarmTriggered).toBe(true)
+    })
+
+    it('thief outside camera range does not trigger alarm', () => {
+      const room = makeRoom(1)
+      const state = initGameState(room, BASIC_MAP)
+      state.room.phase = 'heist'
+
+      const thief = room.players.find(p => p.role === 'thief')!
+      const pos = state.playerPositions.find(p => p.playerId === thief.id)!
+
+      state.cameras = [{
+        id: 'cam1',
+        x: 10,
+        y: 10,
+        angle: 0,
+        fov: Math.PI,
+        destroyed: false,
+      }]
+
+      // Place thief far away — outside 2.5 tile range
+      pos.x = 20
+      pos.y = 10
+
+      const engine = new GameEngine(state, BASIC_MAP)
+      engine.advanceTick()
+
+      expect(state.alarmTriggered).toBe(false)
+    })
+
+    it('destroyed camera does not trigger alarm even when thief is in range and FOV', () => {
+      const room = makeRoom(1)
+      const state = initGameState(room, BASIC_MAP)
+      state.room.phase = 'heist'
+
+      const thief = room.players.find(p => p.role === 'thief')!
+      const pos = state.playerPositions.find(p => p.playerId === thief.id)!
+
+      state.cameras = [{
+        id: 'cam1',
+        x: 10,
+        y: 10,
+        angle: 0,
+        fov: Math.PI,
+        destroyed: true, // destroyed — should not detect
+      }]
+
+      pos.x = 11
+      pos.y = 10
+
+      const engine = new GameEngine(state, BASIC_MAP)
+      engine.advanceTick()
+
+      expect(state.alarmTriggered).toBe(false)
+    })
+
+    it('camera detection skips when alarm is already triggered', () => {
+      const room = makeRoom(1)
+      const state = initGameState(room, BASIC_MAP)
+      state.room.phase = 'heist'
+      state.alarmTriggered = true // already active
+
+      const thief = room.players.find(p => p.role === 'thief')!
+      const pos = state.playerPositions.find(p => p.playerId === thief.id)!
+
+      state.cameras = [{
+        id: 'cam1',
+        x: 10,
+        y: 10,
+        angle: 0,
+        fov: Math.PI,
+        destroyed: false,
+      }]
+
+      pos.x = 11
+      pos.y = 10
+
+      // preAlarmTicksRemaining must be null so heistTicksRemaining is not overwritten
+      state.preAlarmTicksRemaining = null
+      const ticksBefore = state.heistTicksRemaining
+
+      const engine = new GameEngine(state, BASIC_MAP)
+      engine.advanceTick()
+
+      // Alarm was already on — camera branch is skipped so no additional alarm side-effects
+      expect(state.alarmTriggered).toBe(true)
+      // heistTicksRemaining would only be capped to ALARM_LOCKDOWN_TICKS on first trigger
+      // Since alarm was already active and ticks > ALARM_LOCKDOWN_TICKS, the timer just decrements
+      expect(state.heistTicksRemaining).toBe(ticksBefore - 1)
+    })
+  })
+
   describe('Phase 3 integration — win condition via advanceTick', () => {
     it('advanceTick broadcasts game_over and sets phase to resolution when thieves win', () => {
       const room = makeRoom(1)

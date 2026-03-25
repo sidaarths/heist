@@ -213,6 +213,26 @@ describe('SocketHandler', () => {
     })
   })
 
+  describe('error handler', () => {
+    it('handler.error does not throw', () => {
+      const { ws } = makeWs('p1')
+      handler.open(ws)
+      expect(() => handler.error(ws, new Error('test error'))).not.toThrow()
+    })
+  })
+
+  describe('invalid JSON', () => {
+    it('sending non-JSON string returns error with code INVALID_JSON', () => {
+      const { ws, sent } = makeWs('p1')
+      handler.open(ws)
+
+      handler.message(ws, 'not valid json', false)
+
+      const errMsg = sent.find(m => m.type === 'error' && (m as any).code === 'INVALID_JSON')
+      expect(errMsg).toBeDefined()
+    })
+  })
+
   describe('disconnect handling', () => {
     it('remaining players receive updated room_state when a player disconnects', () => {
       const p1 = makeWs('p1')
@@ -251,6 +271,48 @@ describe('SocketHandler', () => {
         m => m.type === 'error' && (m as any).code === 'RATE_LIMITED'
       )
       expect(rateLimited).toBeDefined()
+    })
+
+    it('last player disconnecting removes room from manager.rooms', () => {
+      const p1 = makeWs('p1')
+      handler.open(p1.ws)
+
+      handler.message(p1.ws, JSON.stringify({ type: 'create_room', playerName: 'Alice' }))
+      const roomCreated = p1.sent.find(m => m.type === 'room_created') as any
+      const roomId = roomCreated.roomId
+
+      // Only p1 in the room — disconnect her (last player)
+      handler.close(p1.ws, 1000, '')
+
+      // Room should be gone from manager
+      expect(manager.getRoom(roomId)).toBeUndefined()
+    })
+
+    it('player disconnecting while room is in resolution phase calls stopInterval (session still accessible)', () => {
+      const p1 = makeWs('p1')
+      const p2 = makeWs('p2')
+      handler.open(p1.ws)
+      handler.open(p2.ws)
+
+      handler.message(p1.ws, JSON.stringify({ type: 'create_room', playerName: 'Alice' }))
+      const roomCreated = p1.sent.find(m => m.type === 'room_created') as any
+      const roomId = roomCreated.roomId
+
+      handler.message(p2.ws, JSON.stringify({ type: 'join_room', roomId, playerName: 'Bob' }))
+
+      // Manually set room to resolution phase (simulating post-game)
+      const room = manager.getRoom(roomId)!
+      room.phase = 'resolution'
+
+      p1.sent.length = 0
+      p2.sent.length = 0
+
+      // p2 disconnects during resolution — should NOT end the session (stopInterval, not stopRoom)
+      // Room should still exist for p1
+      expect(() => handler.close(p2.ws, 1000, '')).not.toThrow()
+
+      // p1 remains in the room
+      expect(manager.getRoom(roomId)).toBeDefined()
     })
   })
 })

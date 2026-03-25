@@ -239,6 +239,70 @@ describe('movement — applyPlayerMove', () => {
     })
   })
 
+  describe('door passability', () => {
+    it('player is blocked by a wall tile that has a LOCKED door in state.doors', () => {
+      // Build a map where tile (5,6) is a Wall
+      const map = makeTestMap()
+      // Override one interior tile to be a Wall
+      map.rooms[0].tiles[6][5] = TileType.Wall
+
+      // Place thief at (5,5) — moving down would land at (5, 5+BASE_MOVE_SPEED) = (5,8)
+      // But we need to test a locked door blocking movement at (5,6)
+      // Start close enough that the leading-edge check hits the locked-door wall tile
+      const state = makeState({ x: 5, y: 5 })
+
+      // Add a LOCKED door at the wall tile (5,6)
+      state.doors.push({ id: 'd1', x: 5, y: 6, locked: true, open: false })
+
+      // Move toward y=6 — with BASE_MOVE_SPEED=3 from y=5 would go to y=8,
+      // but place thief close to the wall tile so the leading-edge probe hits it
+      const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+      pos.y = 5.5 // close enough that center + radius hits tile row 6
+
+      const beforeY = pos.y
+      applyPlayerMove(state, map, 'thief1', 0, 1)
+
+      // Movement must be blocked — tile (5,6) is a wall with locked door
+      expect(pos.y).toBe(beforeY)
+    })
+
+    it('player can move through a wall tile that has an UNLOCKED door in state.doors', () => {
+      // Build a 12×12 map with a wall tile at (5,6)
+      const map = makeTestMap()
+      map.rooms[0].tiles[6][5] = TileType.Wall
+
+      const state = makeState({ x: 5, y: 3 })
+
+      // Add an UNLOCKED door at the wall tile (5,6) — should be passable
+      state.doors.push({ id: 'd1', x: 5, y: 6, locked: false, open: true })
+
+      applyPlayerMove(state, map, 'thief1', 0, 1)
+
+      const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+      // Movement succeeds — player moved downward (y increased)
+      expect(pos.y).toBeGreaterThan(3)
+    })
+
+    it('diagonal move blocked when corner tile is a wall even if both cardinal axis tiles are passable', () => {
+      // BASE_MOVE_SPEED=0.25, PLAYER_RADIUS=0.35. Player at (5.7, 5.7):
+      //   newX = 5.7 + 0.25 = 5.95, newY = 5.95
+      //   center tile:  (5, 5)     → tile[5][5] = Floor (passes)
+      //   X cardinal:  (6.30, 5.95) → tile (6, 5) → tile[5][6] = Floor (passes)
+      //   Y cardinal:  (5.95, 6.30) → tile (5, 6) → tile[6][5] = Floor (passes)
+      //   corner probe: (6.30, 6.30) → tile (6, 6) → tile[6][6] = Wall (BLOCKED)
+      // Note: tile[row][col] where row=Math.floor(y), col=Math.floor(x)
+      const map = makeTestMap()
+      map.rooms[0].tiles[6][6] = TileType.Wall // tile at col=6, row=6 — only the diagonal corner
+
+      const state = makeState({ x: 5.7, y: 5.7 })
+      applyPlayerMove(state, map, 'thief1', 1, 1)
+
+      const pos = state.playerPositions.find(p => p.playerId === 'thief1')!
+      expect(pos.x).toBe(5.7)
+      expect(pos.y).toBe(5.7)
+    })
+  })
+
   describe('getTileAt — out-of-bounds tile', () => {
     it('treats coordinates outside all map rooms as wall (blocks movement)', () => {
       // Build a map whose single room covers only 4×4 tiles at offset (2,2)
