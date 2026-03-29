@@ -1,6 +1,6 @@
 # Heist
 
-A real-time multiplayer asymmetric party game for 3–5 players. One player is the **Security AI** with god-mode control of a building. The rest are **Thieves** trying to steal loot and escape — all from completely different interfaces rendered from the same shared game state.
+A real-time multiplayer asymmetric party game for 2–5 players. One player is the **Security AI** with god-mode control of a building. The rest are **Thieves** trying to steal loot and escape — all from completely different interfaces rendered from the same shared game state.
 
 ## Tech Stack
 
